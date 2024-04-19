@@ -1,14 +1,10 @@
 CC = gcc
-CFLAGS = -c -Wall
+CFLAGS = -Wall
 
 WINDOWS_FLAGS := -lws2_32
 LINUX_FLAGS :=
 
 BUILD_DIR := build
-APP_LAUNCHER_С := src/app_launcher/app_launcher_$(FILE_SUFFIX).c
-NETWORK_MANAGER_С := src/network_manager/network_manager_$(FILE_SUFFIX).c
-APP_LAUNCHER_O := $(BUILD_DIR)/app_launcher_$(FILE_SUFFIX).o
-NETWORK_MANAGER_O := $(BUILD_DIR)/network_manager$(FILE_SUFFIX).o
 
 ifeq ($(OS), Windows_NT)
 	EXE_EXT := .exe
@@ -22,29 +18,49 @@ else
 	RM_BUILD_DIR := rm -rf $(BUILD_DIR)/*
 endif
 
+APP_LAUNCHER_С := src/app_launcher/app_launcher_$(FILE_SUFFIX).c
+NETWORK_MANAGER_С := src/network_manager/network_manager_$(FILE_SUFFIX).c
+SERVER_C := src/remote_app_launch_server.c
+CLIENT_C := src/remote_app_launch_client.c
+
+APP_LAUNCHER_O := $(BUILD_DIR)/app_launcher_$(FILE_SUFFIX).o
+NETWORK_MANAGER_O := $(BUILD_DIR)/network_manager_$(FILE_SUFFIX).o
+SERVER_O := $(BUILD_DIR)/server_$(FILE_SUFFIX).o
+CLIENT_O := $(BUILD_DIR)/client_$(FILE_SUFFIX).o
+
 .PHONY: all clean help
 all: client server
 
-server: $(NETWORK_MANAGER_O)
+server: $(SERVER_O) $(NETWORK_MANAGER_O)
 	@echo "------ Make $(@) ------"
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDLIBS) $^ -o $(BUILD_DIR)/remote_app_launch_server$(EXE_EXT)
+	$(CC) $(LDLIBS) $^ -o $(BUILD_DIR)/remote_app_launch_server$(EXE_EXT)
 
-client: $(NETWORK_MANAGER_O) $(APP_LAUNCHER_O)
+client: $(CLIENT_O) $(NETWORK_MANAGER_O) $(APP_LAUNCHER_O)
 	@echo "------ Make $(@) ------"
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDLIBS) $^ -o $(BUILD_DIR)/remote_app_launch_client$(EXE_EXT)
+	$(CC) $(LDLIBS) $^ -o $(BUILD_DIR)/remote_app_launch_client$(EXE_EXT)
 
 $(NETWORK_MANAGER_O): $(NETWORK_MANAGER_С) | $(BUILD_DIR)
-	@echo "------ Make $(@) ------"
-	$(CC) $(CFLAGS) $(CPPFLAGS) $< -o $@
+	@echo "------ Compile $(@) ------"
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 $(APP_LAUNCHER_O): $(APP_LAUNCHER_С) | $(BUILD_DIR)
-	@echo "------ Make $(@) ------"
-	$(CC) $(CFLAGS) $(CPPFLAGS) $< -o $@
+	@echo "------ Compile $(@) ------"
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
+
+$(SERVER_O): $(SERVER_C) | $(BUILD_DIR)
+	@echo "------ Compile $(@) ------"
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
+
+$(CLIENT_O): $(CLIENT_C) | $(BUILD_DIR)
+	@echo "------ Compile $(@) ------"
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
 $(BUILD_DIR):
+	@echo "------ Make build dir $(@) ------"
 	mkdir -p $(BUILD_DIR)
 
 clean:
+	@echo "------ Clean build dir------"
 	$(RM_BUILD_DIR)
 
 help:
