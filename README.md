@@ -13,9 +13,9 @@ Application logic must be divided between Network and System API.
 
 # Task:
 Client/Server application <b> to launch and track application on the remote host </b>.
-- server will request to launch application with <application name>
+- server will request to launch application with \<application name>
 - the client has to launch an application on his host. (Ex Notepad.exe)
 - the client has to replay with success or failure
-- the client has to replay with application status <Running> each second
+- the client has to replay with application status \<Running> each second
 - when the application is closed by another application Client has to replay to the server also.
-- server can request to close the application with <application name>
+- server can request to close the application with \<application name>
