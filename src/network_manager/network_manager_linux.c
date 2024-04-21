@@ -59,11 +59,11 @@ int accept_client(int serverSocket) {
     return clientSocket;
 }
 
-int send_message(int clientSocket, const char* message, size_t length) {
+long send_message(int clientSocket, const char* message, size_t length) {
     return send(clientSocket, message, length, 0);
 }
 
-int recv_message(int clientSocket, char* buffer, size_t length) {
+long recv_message(int clientSocket, char* buffer, size_t length) {
     return recv(clientSocket, buffer, length, 0);
 }
 
