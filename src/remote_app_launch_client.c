@@ -1,7 +1,7 @@
 #include <stdio.h>  // printf, putchar, sscanf
 #include <string.h> // strcmp, strlen
 #include <stddef.h> // size_t
-#include <stdlib.h> // strtol
+#include <stdlib.h> // strtol, malloc
 #include <limits.h> // INT_MAX
 
 #include "network_manager/network_manager.h"
@@ -60,8 +60,7 @@ void deleteAll(struct Node** headPtr) {
     *headPtr = NULL;
 }
 
-
-int receive_request(int serverSocket, struct Node** pids) {
+int handle_request(int serverSocket, struct Node** pidsPtr) {
     char buffer[250];
     char requestCommand[20];
     char application[230];
@@ -71,8 +70,8 @@ int receive_request(int serverSocket, struct Node** pids) {
         return -1;
     }
     sscanf(buffer, "%s %[^\n]", requestCommand, application);
-    printf("Receiving: \"%s\", \"%s\"", requestCommand, application);
-    printf("\nreceived_len = %d\n", requestLength);
+    printf("! Receiving: \"%s\", \"%s\"", requestCommand, application);
+    printf("\n! received_len = %d\n", requestLength);
 
     if (strcmp(requestCommand, "run1") == 0 || strcmp(requestCommand, "run2") == 0) {
         int pid = launch_process(application);
@@ -80,21 +79,59 @@ int receive_request(int serverSocket, struct Node** pids) {
             printf("launch_process failed.\n");
             return -1;
         } else {
-            append(pids, pid);
+            append(pidsPtr, pid);
+            // response success to server
         }
         return pid;
     } else if (strcmp(requestCommand, "kill1") == 0) {
-//        in loop terminate_process();
+//        todo in loop terminate_process();
     } else if (strcmp(requestCommand, "kill2") == 0) {
         long lpid = strtol(application, NULL, 10);
         if (lpid <= 0 || lpid >= INT_MAX) {
             return -1;
         }
-        return terminate_process((int)lpid);
+        int pid = (int)lpid;
+        if (terminate_process(pid) == 0) {
+            delete(pidsPtr, pid);
+            return 0;
+        } else {
+            printf("terminate_process failed.\n");
+            return -1;
+        }
     } else {
-        printf("\nОтримано невідомий запит: \"%s\"", requestCommand);
+        printf("Unknown request received: \"%s\"", requestCommand);
     }
     return requestLength;
+}
+
+// todo return string and send to server
+void check_all_processes(const char* clientName, struct Node** pidsPtr) {
+    struct Node* current = *pidsPtr;
+    struct Node* next;
+    if (current == NULL) {
+        return;
+    }
+    while (current != NULL) {
+        next = current->next;
+        switch (get_process_state(current->pid)) {
+            case 0:
+                printf("Client \"%s\": process %d is still running.\n", clientName, current->pid);
+                break;
+            case 1:
+                printf("Client \"%s\": process %d is exited.\n", clientName, current->pid);
+                delete(pidsPtr, current->pid);
+                break;
+            case 2:
+                printf("Client \"%s\": process %d is terminated.\n", clientName, current->pid);
+                delete(pidsPtr, current->pid);
+                break;
+            default: // -1
+                printf("Client \"%s\": get_process_status for %d is failed.\n", clientName, current->pid);
+                delete(pidsPtr, current->pid);
+                break;
+        }
+        current = next;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -124,52 +161,38 @@ int main(int argc, char* argv[]) {
         printf("Client name not send (%d of %zu).\n", requestLength, clientNameLength);
         return 1;
     }
-    printf("requestLength = %d\n", requestLength);
+    printf("! requestLength = %d\n", requestLength);
 
     struct Node* pids = NULL;
 
-    // send name to server
-    // loop:
-
-    receive_request(clientSocket, &pids);
-
+    handle_request(clientSocket, &pids);
 //    char gedit[] = "/usr/bin/gedit 123.txt";
-//    pids[0] = launch_process(gedit);
-    if (pids->pid == -1) {
-        printf("launch_process failed.\n");
-        return 6; // continue loop
-    }
-    for (int i = 0; i < 30 && pids != NULL; ++i) {
-        if (pids->pid == 0) break;
-        switch (get_process_state(pids->pid)) {
-            case 0:
-                printf("process %d is still running.\n", pids->pid);
-                break;
-            case 1:
-                printf("process %d is exited.\n", pids->pid);
-                delete(&pids, pids->pid);
-                break;
-            case 2:
-                printf("process %d is terminated.\n", pids->pid);
-                delete(&pids, pids->pid);
-                break;
-            default: // -1
-                printf("get_process_status for %d is failed.\n", pids->pid);
-                delete(&pids, pids->pid);
-                break; // return
-        }
+//    int pid = launch_process(gedit);
+//    if (pid == -1) {
+//        printf("launch_process failed.\n");
+//        return 6;
+//    } else {
+//        append(&pids, pid);
+//    }
+
+    while (pids != NULL) {
+        // todo handle_requests
+        check_all_processes(clientName, &pids);
+        // todo send response
         sleep_wrapper(1);
     }
 
-    printf("terminate:\n");
-    if (pids != NULL && terminate_process(pids->pid) == -1) {
-        printf("terminate failed.\n");
-        return 8;
+    printf("! Clean up\n"); // todo Ctrl-C
+    struct Node* current = pids;
+    while (current != NULL) {
+        if (terminate_process(current->pid) == -1) {
+            printf("terminate %d failed.\n", current->pid);
+        }
+        current = current->next;
     }
-
-    // end loop
 
     close_host_socket(clientSocket);
     deleteAll(&pids);
+    printf("! Clean up completed\n");
     return 0;
 }
