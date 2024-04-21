@@ -1,6 +1,8 @@
-#include <stdio.h> // printf, putchar, sscanf
+#include <stdio.h>  // printf, putchar, sscanf
 #include <string.h> // strcmp, strlen
 #include <stddef.h> // size_t
+#include <stdlib.h> // strtol
+#include <limits.h> // INT_MAX
 
 #include "network_manager/network_manager.h"
 #include "app_launcher/app_launcher.h"
@@ -25,10 +27,15 @@ int receive_request(int serverSocket, int* pids) {
             printf("launch_process failed.\n");
             return -1;
         }
+        return pids[0];
     } else if (strcmp(requestCommand, "kill1") == 0) {
 //        in loop terminate_process();
     } else if (strcmp(requestCommand, "kill2") == 0) {
-//        terminate_process();
+        long lpid = strtol(application, NULL, 10);
+        if (lpid <= 0 || lpid >= INT_MAX) {
+            return -1;
+        }
+        return terminate_process((int)lpid);
     } else {
         printf("\nОтримано невідомий запит: \"%s\"", requestCommand);
     }
@@ -71,6 +78,8 @@ int main(int argc, char* argv[]) {
 
     receive_request(clientSocket, pids);
 
+//    char gedit[] = "/usr/bin/gedit 123.txt";
+//    pids[0] = launch_process(gedit);
     if (pids[0] == -1) {
         printf("launch_process failed.\n");
         return 6; // continue loop
