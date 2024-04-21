@@ -46,7 +46,7 @@ int accept_client(int serverSocket);
  * @param length length of message - bytes to send
  * @return number sent or -1 on error
  */
-int send_message(int clientSocket, const char* message, size_t length);
+size_t send_message(int clientSocket, const char* message, size_t length);
 
 /**
  * Receive a message from a socket
@@ -55,7 +55,7 @@ int send_message(int clientSocket, const char* message, size_t length);
  * @param length number of bytes to read
  * @return number received or -1 on error
  */
-int recv_message(int clientSocket, char* buffer, size_t length);
+size_t recv_message(int clientSocket, char* buffer, size_t length);
 
 /**
  * Close client socket
