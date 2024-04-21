@@ -1,11 +1,40 @@
-#include <stdio.h>
+#include <stdio.h> // printf, putchar, sscanf
+#include <string.h> // strcmp
 
 #include "network_manager/network_manager.h"
 #include "app_launcher/app_launcher.h"
 
+
+int receive_request(int serverSocket) {
+    char buffer[250];
+    char requestCommand[30];
+    char application[100];
+    char arguments[100];
+
+    int received_len = recv_message(serverSocket, buffer, sizeof(buffer));
+    if (received_len < 0) {
+        return -1;
+    }
+    sscanf(buffer, "%s %s %[^\n]", requestCommand, application, arguments);
+    printf("Receiving: \"%s\", \"%s\", \"%s\"", requestCommand, application, arguments);
+    printf("\nreceived_len = %d\n", received_len);
+
+    if (strcmp(requestCommand, "run1") == 0) {
+//        launch_process();
+    } else if (strcmp(requestCommand, "run2") == 0) {
+//        launch_process(); with argv
+    } else if (strcmp(requestCommand, "kill1") == 0) {
+//        in loop terminate_process();
+    } else if (strcmp(requestCommand, "kill2") == 0) {
+//        terminate_process();
+    } else {
+        printf("\nОтримано невідомий запит: \"%s\"", requestCommand);
+    }
+    return received_len;
+}
+
 int main() {
-    printf("Hello, Client!\n");
-    char buffer[100] = {0};
+    // get client name from argv
 
     int clientSocket = create_socket();
     if (clientSocket == -1) {
@@ -17,18 +46,12 @@ int main() {
         return 4;
     }
 
-
     int pids[2] = {0}; // do linked list
 
+    // send name to server
     // loop:
 
-    int response_len = recv_message(clientSocket, buffer, sizeof(buffer));
-    printf("response_len = %d\n", response_len);
-    printf("Message received: %s\n", buffer);
-//    for (int i = 0; i < sizeof(buffer) / sizeof(buffer[0]); i++) {
-//        printf("%c", buffer[i]);
-//    }
-//    printf("\n");
+    receive_request(clientSocket);
 
     pids[0] = launch_process("echo ! hello from child 1", NULL);
     pids[1] = launch_process("echo ! hello from child 2", NULL);
