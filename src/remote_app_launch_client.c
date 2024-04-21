@@ -33,10 +33,18 @@ int receive_request(int serverSocket) {
     return received_len;
 }
 
-int main() {
-    // get client name from argv
+int main(int argc, char* argv[]) {
+    char* clientName;
+    int clientSocket;
 
-    int clientSocket = create_socket();
+    if (argc != 2) {
+        printf("Usage: %s <client name>\n", argv[0]);
+        return 1;
+    }
+    clientName = argv[1];
+    printf("Client name is: \"%s\"\n", clientName);
+
+    clientSocket = create_socket();
     if (clientSocket == -1) {
         printf("Failed to create socket.\n");
         return 1;
