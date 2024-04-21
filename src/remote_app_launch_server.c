@@ -1,11 +1,42 @@
-#include <stdio.h>
-#include <string.h>
+#include <stdio.h> // printf, fgets, scanf, sprintf
+#include <string.h> // strcmp, strlen
 
 #include "network_manager/network_manager.h"
 
+int send_request(int clientSocket, char* requestCommand, char* application, char* arguments) {
+    char request[250];
+    int request_len = 0;
+
+    if (requestCommand != NULL) {
+        if (application != NULL) {
+            if (arguments != NULL) {
+                printf("Sending: \"%s\", \"%s\", \"%s\"\n", requestCommand, application, arguments);
+                sprintf(request, "%s %s %s", requestCommand, application, arguments);
+            } else {
+                printf("Sending: \"%s\", \"%s\"\n", requestCommand, application);
+                sprintf(request, "%s %s", requestCommand, application);
+            }
+        } else {
+            printf("Sending: \"%s\"\n", requestCommand);
+            sprintf(request, "%s", requestCommand);
+        }
+    } else {
+        return -1;
+    }
+    request_len = send_message(clientSocket, request, strlen(request) + 1);
+    if (request_len < 0) {
+        return -1;
+    }
+    return request_len;
+}
+
 int main() {
-    printf("Hello, Server!\n");
-    char message[] = "Hello from server";
+    char input[300];
+    char clientName[30];
+    char requestCommand[30];
+    char application[100];
+    char arguments[100];
+    int requestLength = 0;
 
     int serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -25,10 +56,37 @@ int main() {
         printf("Accept failed.\n");
         return 5;
     }
-    int request_len = send_message(clientSocket, message, strlen(message));
+
+    requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
+    if (requestLength < 0) {
+        printf("Client name: \"%s\"\nrequestLength = %d\n", clientName, requestLength);
+        return -1;
+    }
+    printf("Client name: \"%s\"\nrequestLength = %d\n", clientName, requestLength);
+
+    printf("Enter client name and command (run/kill):\n> ");
+    fgets(input, sizeof(input), stdin);
+    sscanf(input, "%s %s", clientName, requestCommand);
+
+    if (strcmp(requestCommand, "run1") == 0) {
+        sscanf(input, "%*s %*s %s", application);
+        requestLength = send_request(clientSocket, requestCommand, application, NULL); // run app
+    } else if (strcmp(requestCommand, "run2") == 0) {
+        sscanf(input, "%*s %*s %s %[^\n]", application, arguments);
+        requestLength = send_request(clientSocket, requestCommand, application, arguments); // run app argv
+    } else if (strcmp(requestCommand, "kill1") == 0) {
+        requestLength = send_request(clientSocket, requestCommand, NULL, NULL); // kill (all children)
+    } else if (strcmp(requestCommand, "kill2") == 0) {
+        sscanf(input, "%*s %*s %s", application);
+        requestLength = send_request(clientSocket, requestCommand, application, NULL); // kill pid
+    } else {
+        printf("Invalid command \"%s\"\n", requestCommand);
+        return 111;
+    }
+
     printf("serverSocket = %d\n", serverSocket);
     printf("clientSocket = %d\n", clientSocket);
-    printf("request_len = %d\n", request_len);
+    printf("requestLength = %d\n", requestLength);
     close_socket(clientSocket);
     close_host_socket(serverSocket);
 
