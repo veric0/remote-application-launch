@@ -1,5 +1,6 @@
 #include <stdio.h> // printf, putchar, sscanf
-#include <string.h> // strcmp
+#include <string.h> // strcmp, strlen
+#include <stddef.h> // size_t
 
 #include "network_manager/network_manager.h"
 #include "app_launcher/app_launcher.h"
@@ -34,14 +35,14 @@ int receive_request(int serverSocket) {
 }
 
 int main(int argc, char* argv[]) {
-    char* clientName;
-    int clientSocket;
+    char clientName[30];
+    size_t clientNameLength = 0;
+    int clientSocket, requestLength;
 
-    if (argc != 2) {
-        printf("Usage: %s <client name>\n", argv[0]);
+    if (argc != 2 || strlen(argv[1]) >= 30 || sscanf(argv[1], "%s", clientName) == EOF) {
+        printf("Usage: %s <client name (length < 30)>\n", argv[0]);
         return 1;
     }
-    clientName = argv[1];
     printf("Client name is: \"%s\"\n", clientName);
 
     clientSocket = create_socket();
@@ -53,6 +54,14 @@ int main(int argc, char* argv[]) {
         printf("Connection failed.\n");
         return 4;
     }
+
+    clientNameLength = strlen(clientName);
+    requestLength = send_message(clientSocket, clientName, clientNameLength);
+    if (requestLength == -1 || requestLength < clientNameLength) {
+        printf("Client name not send (%d of %zu).\n", requestLength, clientNameLength);
+        return 1;
+    }
+    printf("requestLength = %d\n", requestLength);
 
     int pids[2] = {0}; // do linked list
 
