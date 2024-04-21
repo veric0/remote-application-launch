@@ -3,11 +3,10 @@
 
 /**
  * Launch application in new process.
- * @param command application
- * @param argv arguments for application
- * @return PID of child process
+ * @param application argv[] for application. argv[0] is application path
+ * @return PID of child process. -1 on error
  */
-int launch_process(const char* command, char* const* argv);
+int launch_process(char* application);
 
 /**
  * Terminate child process.

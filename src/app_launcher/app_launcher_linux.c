@@ -1,18 +1,38 @@
 #include <stdlib.h>
+#include <string.h>
+
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
 #include "app_launcher.h"
 
-int launch_process(const char* command, char* const* argv) {
+int launch_process(char* application) {
     pid_t pid_child = fork();
     if (pid_child == 0) {
-        sleep(7); // imitate long working time
-//        execl("/bin/sh", "sh", "-c", command, NULL);
-//        execl(command, "arg0", "arg1", NULL);
-//        execv(command, argv);
-        return execl("/bin/sh", "sh", "-c", command, NULL);
+        int numWords = 0;
+        const char delim[] = " ";
+        char *token = strtok(application, delim);
+        while (token != NULL) {
+            numWords++; // count words for malloc
+            token = strtok(NULL, delim);
+        }
+
+        char **argv = (char **)malloc((numWords + 1) * sizeof(char *));
+        if (argv == NULL) {
+            return -1;
+        }
+
+        token = strtok(application, delim);
+        int i = 0;
+        while (token != NULL) {
+            argv[i] = token;
+            i++;
+            token = strtok(NULL, delim);
+        }
+        argv[numWords] = NULL;
+
+        return execv(argv[0], argv);
     }
     return pid_child;
 }
