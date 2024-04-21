@@ -7,8 +7,61 @@
 #include "network_manager/network_manager.h"
 #include "app_launcher/app_launcher.h"
 
+struct Node {
+    int pid;
+    struct Node* next;
+};
 
-int receive_request(int serverSocket, int* pids) {
+struct Node* append(struct Node** headPtr, int pid) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    if (newNode != NULL) {
+        newNode->pid = pid;
+        newNode->next = *headPtr;
+        *headPtr = newNode;
+    }
+    return newNode;
+}
+
+struct Node* find(struct Node* head, int pid) {
+    while (head != NULL) {
+        if (head->pid == pid) {
+            return head;
+        }
+        head = head->next;
+    }
+    return NULL;
+}
+
+void delete(struct Node** headPtr, int pid) {
+    struct Node* current = *headPtr;
+    struct Node* prev = NULL;
+    while (current != NULL && current->pid != pid) {
+        prev = current;
+        current = current->next;
+    }
+    if (current == NULL) {
+        return;
+    }
+    if (prev == NULL) {
+        *headPtr = current->next;
+    } else {
+        prev->next = current->next;
+    }
+    free(current);
+}
+void deleteAll(struct Node** headPtr) {
+    struct Node* current = *headPtr;
+    struct Node* next;
+    while (current != NULL) {
+        next = current->next;
+        free(current);
+        current = next;
+    }
+    *headPtr = NULL;
+}
+
+
+int receive_request(int serverSocket, struct Node** pids) {
     char buffer[250];
     char requestCommand[20];
     char application[230];
@@ -22,12 +75,14 @@ int receive_request(int serverSocket, int* pids) {
     printf("\nreceived_len = %d\n", requestLength);
 
     if (strcmp(requestCommand, "run1") == 0 || strcmp(requestCommand, "run2") == 0) {
-        pids[0] = launch_process(application);
-        if (pids[0] == -1) {
+        int pid = launch_process(application);
+        if (pid == -1) {
             printf("launch_process failed.\n");
             return -1;
+        } else {
+            append(pids, pid);
         }
-        return pids[0];
+        return pid;
     } else if (strcmp(requestCommand, "kill1") == 0) {
 //        in loop terminate_process();
     } else if (strcmp(requestCommand, "kill2") == 0) {
@@ -71,53 +126,50 @@ int main(int argc, char* argv[]) {
     }
     printf("requestLength = %d\n", requestLength);
 
-    int pids[2] = {0}; // do linked list
+    struct Node* pids = NULL;
 
     // send name to server
     // loop:
 
-    receive_request(clientSocket, pids);
+    receive_request(clientSocket, &pids);
 
 //    char gedit[] = "/usr/bin/gedit 123.txt";
 //    pids[0] = launch_process(gedit);
-    if (pids[0] == -1) {
+    if (pids->pid == -1) {
         printf("launch_process failed.\n");
         return 6; // continue loop
     }
-    for (int i = 0; i < 30; ++i) {
-        for (int p = 0; p < 2; ++p) {
-            if (pids[p] == 0) break;
-            switch (get_process_state(pids[p])) {
-                case 0:
-                    printf("process %d is still running.\n", pids[p]);
-                    break;
-                case 1:
-                    printf("process %d is exited.\n", pids[p]);
-                    pids[p] = 0;
-                    break;
-                case 2:
-                    printf("process %d is terminated.\n", pids[p]);
-                    pids[p] = 0;
-                    break;
-                default: // -1
-                    printf("get_process_status for %d is failed.\n", pids[p]);
-                    pids[p] = 0;
-                    break; // return
-            }
+    for (int i = 0; i < 30 && pids != NULL; ++i) {
+        if (pids->pid == 0) break;
+        switch (get_process_state(pids->pid)) {
+            case 0:
+                printf("process %d is still running.\n", pids->pid);
+                break;
+            case 1:
+                printf("process %d is exited.\n", pids->pid);
+                delete(&pids, pids->pid);
+                break;
+            case 2:
+                printf("process %d is terminated.\n", pids->pid);
+                delete(&pids, pids->pid);
+                break;
+            default: // -1
+                printf("get_process_status for %d is failed.\n", pids->pid);
+                delete(&pids, pids->pid);
+                break; // return
         }
-        putchar('\n');
         sleep_wrapper(1);
     }
 
     printf("terminate:\n");
-    if (terminate_process(pids[0]) == -1) {
+    if (pids != NULL && terminate_process(pids->pid) == -1) {
         printf("terminate failed.\n");
         return 8;
-    } // else send response success terminate
+    }
 
     // end loop
 
     close_host_socket(clientSocket);
-
+    deleteAll(&pids);
     return 0;
 }
