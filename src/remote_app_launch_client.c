@@ -60,18 +60,18 @@ void deleteAll(struct Node** headPtr) {
     *headPtr = NULL;
 }
 
-int handle_request(int serverSocket, struct Node** pidsPtr) {
+long handle_request(int serverSocket, struct Node** pidsPtr) {
     char buffer[250];
     char requestCommand[20];
     char application[230];
 
-    int requestLength = recv_message(serverSocket, buffer, sizeof(buffer));
+    long requestLength = recv_message(serverSocket, buffer, sizeof(buffer));
     if (requestLength < 0) {
         return -1;
     }
     sscanf(buffer, "%s %[^\n]", requestCommand, application);
     printf("! Receiving: \"%s\", \"%s\"", requestCommand, application);
-    printf("\n! received_len = %d\n", requestLength);
+    printf("\n! received_len = %ld\n", requestLength);
 
     if (strcmp(requestCommand, "run1") == 0 || strcmp(requestCommand, "run2") == 0) {
         int pid = launch_process(application);
@@ -105,28 +105,31 @@ int handle_request(int serverSocket, struct Node** pidsPtr) {
 }
 
 // todo return string and send to server
-void check_all_processes(const char* clientName, struct Node** pidsPtr) {
+void check_all_processes(const char* clientName, struct Node** pidsPtr, char* buffer) {
     struct Node* current = *pidsPtr;
     struct Node* next;
+    int length;
+
     if (current == NULL) {
         return;
     }
+    length = sprintf(buffer, "Client \"%s\": ", clientName);
     while (current != NULL) {
         next = current->next;
         switch (get_process_state(current->pid)) {
             case 0:
-                printf("Client \"%s\": process %d is still running.\n", clientName, current->pid);
+                length += sprintf(buffer + length, "\n  Process %d is still running.", current->pid);
                 break;
             case 1:
-                printf("Client \"%s\": process %d is exited.\n", clientName, current->pid);
+                length += sprintf(buffer + length, "\n  Process %d is exited.", current->pid);
                 delete(pidsPtr, current->pid);
                 break;
             case 2:
-                printf("Client \"%s\": process %d is terminated.\n", clientName, current->pid);
+                length += sprintf(buffer + length, "\n  Process %d is terminated.", current->pid);
                 delete(pidsPtr, current->pid);
                 break;
             default: // -1
-                printf("Client \"%s\": get_process_status for %d is failed.\n", clientName, current->pid);
+                length += sprintf(buffer + length, "\n  Get_process_status for %d is failed.", current->pid);
                 delete(pidsPtr, current->pid);
                 break;
         }
@@ -134,10 +137,22 @@ void check_all_processes(const char* clientName, struct Node** pidsPtr) {
     }
 }
 
+long send_response(int clientSocket, const char* buffer) {
+    size_t bufferLength = strlen(buffer);
+    long requestLength = send_message(clientSocket, buffer, bufferLength + 1);
+    if (requestLength == -1 || requestLength < bufferLength) {
+        printf("Client name not send (%ld of %zu).\n", requestLength, bufferLength);
+        return -1;
+    }
+    return requestLength;
+}
+
 int main(int argc, char* argv[]) {
+    char output[300];
     char clientName[30];
     size_t clientNameLength = 0;
-    int clientSocket, requestLength;
+    long requestLength;
+    int clientSocket;
 
     if (argc != 2 || strlen(argv[1]) >= 30 || sscanf(argv[1], "%s", clientName) == EOF) {
         printf("Usage: %s <client name (length < 30)>\n", argv[0]);
@@ -158,10 +173,10 @@ int main(int argc, char* argv[]) {
     clientNameLength = strlen(clientName);
     requestLength = send_message(clientSocket, clientName, clientNameLength);
     if (requestLength == -1 || requestLength < clientNameLength) {
-        printf("Client name not send (%d of %zu).\n", requestLength, clientNameLength);
+        printf("Client name not send (%ld of %zu).\n", requestLength, clientNameLength);
         return 1;
     }
-    printf("! requestLength = %d\n", requestLength);
+    printf("! requestLength = %ld\n", requestLength);
 
     struct Node* pids = NULL;
 
@@ -177,8 +192,8 @@ int main(int argc, char* argv[]) {
 
     while (pids != NULL) {
         // todo handle_requests
-        check_all_processes(clientName, &pids);
-        // todo send response
+        check_all_processes(clientName, &pids, output);
+        send_response(clientSocket, output);
         sleep_wrapper(1);
     }
 

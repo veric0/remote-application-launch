@@ -3,9 +3,9 @@
 
 #include "network_manager/network_manager.h"
 
-int send_request(int clientSocket, char* requestCommand, char* application, char* arguments) {
+long send_request(int clientSocket, char* requestCommand, char* application, char* arguments) {
     char request[250];
-    int request_len = 0;
+    long request_len = 0;
 
     if (requestCommand != NULL) {
         if (application != NULL) {
@@ -36,7 +36,7 @@ int main() {
     char requestCommand[30];
     char application[100];
     char arguments[100];
-    int requestLength = 0;
+    long requestLength = 0;
 
     int serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -59,10 +59,10 @@ int main() {
 
     requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
     if (requestLength < 0) {
-        printf("Client name: \"%s\"\nrequestLength = %d\n", clientName, requestLength);
+        printf("Client name: \"%s\"\nrequestLength = %ld\n", clientName, requestLength);
         return -1;
     }
-    printf("Client name: \"%s\"\nrequestLength = %d\n", clientName, requestLength);
+    printf("Client name: \"%s\"\n! requestLength = %ld\n", clientName, requestLength);
 
     printf("Enter client name and command (run/kill):\n> ");
     fgets(input, sizeof(input), stdin);
@@ -84,9 +84,20 @@ int main() {
         return 111;
     }
 
-    printf("serverSocket = %d\n", serverSocket);
-    printf("clientSocket = %d\n", clientSocket);
-    printf("requestLength = %d\n", requestLength);
+    for (int i = 0; i < 100; ++i) {
+        printf("%d\n", i);
+        requestLength = recv_message(clientSocket, input, sizeof(input));
+        if (requestLength > 0) {
+            puts(input);
+        } else {
+            printf("! requestLength = %ld\n", requestLength);
+            return -1;
+        }
+    }
+
+    printf("! serverSocket = %d\n", serverSocket);
+    printf("! clientSocket = %d\n", clientSocket);
+    printf("! requestLength = %ld\n", requestLength);
     close_socket(clientSocket);
     close_host_socket(serverSocket);
 
