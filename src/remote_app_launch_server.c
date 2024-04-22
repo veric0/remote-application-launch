@@ -7,6 +7,7 @@
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int quitSignal = 0, serverSocket = -1;
+const int MAX_CLIENTS = 1;
 struct client_node* clients = NULL;
 
 struct command_node {
@@ -177,7 +178,7 @@ void* input_thread_func(void* vargp) {
     char requestCommand[30];
     char application[250];
 
-    while (1) {
+//    while (1) {
         printf("Enter client name and command (run/kill) or (q) for exit:\n> ");
         fgets(input, sizeof(input), stdin);
         sscanf(input, "%s %s %[^\n]", clientName, requestCommand, application);
@@ -185,62 +186,71 @@ void* input_thread_func(void* vargp) {
             pthread_mutex_lock(&mutex);
             push_command(clients, clientName, requestCommand, application);
             pthread_mutex_unlock(&mutex);
-        } else if (strcmp(clientName, "q") == 0) { // if first word is (q)
+        } else if (strcmp(clientName, "q") == 0) { // if first word is (q) // todo fix reading 2 words
             quitSignal = 1;
-            pthread_exit(NULL);
-        } else {
+//            pthread_exit(NULL);
+        } else {  // todo fiw deadlock recv
             printf("Invalid command \"%s\", \"%s\". Try again.\n", requestCommand, application);
         }
-    }
+//    }
+    return NULL;
 }
 
+// todo synchronize send and recv for multiple clients ?
 void* handle_client(void* vargp) {
     char buffer[300];
     char clientName[30];
     long requestLength = 0;
-
-    int clientSocket = accept_client(serverSocket);
-    printf("! clientSocket = %d\n", clientSocket);
-    if (clientSocket == -1) {
-        printf("Accept failed.\n");
-        return NULL;
-    }
+    int clientSocket = *((int*)vargp);
+    struct client_node* client;
 
     requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
     if (requestLength < 0) {
         printf("Client name: \"%s\"\nrequestLength = %ld\n", clientName, requestLength);
-        return NULL;
+        close_socket(clientSocket);
+        pthread_exit(NULL);
     }
     printf("Client name: \"%s\"\n! requestLength = %ld\n", clientName, requestLength);
 
-    clients = add_client(&clients, clientSocket, clientName);
+    pthread_mutex_lock(&mutex);
+    client = add_client(&clients, clientSocket, clientName);
+    pthread_mutex_unlock(&mutex);
 
-    if (strcmp(clients->clientName, clientName) == 0) {
-        requestLength = send_request(clients->clientSocket,
-                                     clients->commandsQueueHead->requestCommand,
-                                     clients->commandsQueueHead->application);
-        printf("! requestLength = %ld\n", requestLength);
-        pop_command(clients);
-
-        for (int i = 0; i < 100; ++i) {
-            printf("%d\n", i);
-            requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
-            if (requestLength > 0) {
-                puts(buffer);
-            } else {
-                printf("requestLength = %ld\n", requestLength);
-                return NULL;
-            }
+    while (!quitSignal) {
+        input_thread_func(NULL); // todo move
+        pthread_mutex_lock(&mutex);
+        if (client->commandsQueueHead != NULL) {
+            send_request(client->clientSocket,
+                         client->commandsQueueHead->requestCommand,
+                         client->commandsQueueHead->application);
+            pop_command(client);
         }
-        delete_client(&clients, clients->clientSocket);
+        pthread_mutex_unlock(&mutex);
+
+        requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
+        if (requestLength > 0) {
+            puts(buffer);
+            char *ptr = strstr(buffer, "\": disconnected.");
+            if (ptr) {
+                break;
+            }
+        } else {
+            printf("requestLength = %ld\n", requestLength);
+            return NULL;
+        }
+
     }
+    pthread_mutex_lock(&mutex);
+    delete_client(&client, client->clientSocket);
+    pthread_mutex_unlock(&mutex);
 
     close_socket(clientSocket);
     return NULL;
 }
 
 int main() {
-    pthread_t inputThreadId;
+//    pthread_t inputThreadId;
+//    pthread_t clientThreadsIds[MAX_CLIENTS];
 
     serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -256,13 +266,22 @@ int main() {
         return 3;
     }
 
-    pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
+//    pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
 
-    // loop:
-    handle_client(NULL);
-    // end loop
+    for (int i = 0; i < MAX_CLIENTS; ++i) {
+        int clientSocket = accept_client(serverSocket);
+        if (clientSocket == -1) {
+            printf("Accept failed.\n");
+            continue;
+        }
+        handle_client((void*)(&clientSocket));
+//        pthread_create(clientThreadsIds + i, NULL, handle_client, NULL);
+    }
 
-    pthread_join(inputThreadId, NULL);
+//    pthread_join(inputThreadId, NULL);
+//    for (int i = 0; i < MAX_CLIENTS; ++i) {
+//        pthread_join(clientThreadsIds[i], NULL);
+//    }
 
     close_host_socket(serverSocket);
 
