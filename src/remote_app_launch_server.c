@@ -6,7 +6,7 @@
 #include "network_manager/network_manager.h"
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-int quitSignal = 0;
+int quitSignal = 0, serverSocket = -1;
 struct client_node* clients = NULL;
 
 struct command_node {
@@ -194,13 +194,55 @@ void* input_thread_func(void* vargp) {
     }
 }
 
-int main() {
+void* handle_client(void* vargp) {
     char buffer[300];
     char clientName[30];
     long requestLength = 0;
+
+    int clientSocket = accept_client(serverSocket);
+    printf("! clientSocket = %d\n", clientSocket);
+    if (clientSocket == -1) {
+        printf("Accept failed.\n");
+        return NULL;
+    }
+
+    requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
+    if (requestLength < 0) {
+        printf("Client name: \"%s\"\nrequestLength = %ld\n", clientName, requestLength);
+        return NULL;
+    }
+    printf("Client name: \"%s\"\n! requestLength = %ld\n", clientName, requestLength);
+
+    clients = add_client(&clients, clientSocket, clientName);
+
+    if (strcmp(clients->clientName, clientName) == 0) {
+        requestLength = send_request(clients->clientSocket,
+                                     clients->commandsQueueHead->requestCommand,
+                                     clients->commandsQueueHead->application);
+        printf("! requestLength = %ld\n", requestLength);
+        pop_command(clients);
+
+        for (int i = 0; i < 100; ++i) {
+            printf("%d\n", i);
+            requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
+            if (requestLength > 0) {
+                puts(buffer);
+            } else {
+                printf("requestLength = %ld\n", requestLength);
+                return NULL;
+            }
+        }
+        delete_client(&clients, clients->clientSocket);
+    }
+
+    close_socket(clientSocket);
+    return NULL;
+}
+
+int main() {
     pthread_t inputThreadId;
 
-    int serverSocket = create_socket();
+    serverSocket = create_socket();
     if (serverSocket == -1) {
         printf("Failed to create socket.\n");
         return 1;
@@ -217,45 +259,7 @@ int main() {
     pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
 
     // loop:
-    int clientSocket = accept_client(serverSocket);
-    printf("! clientSocket = %d\n", clientSocket);
-    if (clientSocket == -1) {
-        printf("Accept failed.\n");
-        return 5;
-    }
-
-    requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
-    if (requestLength < 0) {
-        printf("Client name: \"%s\"\nrequestLength = %ld\n", clientName, requestLength);
-        return -1;
-    }
-    printf("Client name: \"%s\"\n! requestLength = %ld\n", clientName, requestLength);
-
-    clients = add_client(&clients, clientSocket, clientName);
-
-//    sleep(10);
-
-    if (strcmp(clients->clientName, clientName) == 0) {
-        requestLength = send_request(clients->clientSocket,
-                                     clients->commandsQueueHead->requestCommand,
-                                     clients->commandsQueueHead->application);
-        printf("! requestLength = %ld\n", requestLength);
-        pop_command(clients);
-
-        for (int i = 0; i < 100; ++i) {
-            printf("%d\n", i);
-            requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
-            if (requestLength > 0) {
-                puts(buffer);
-            } else {
-                printf("requestLength = %ld\n", requestLength);
-                return -1;
-            }
-        }
-        delete_client(&clients, clients->clientSocket);
-    }
-
-    close_socket(clientSocket);
+    handle_client(NULL);
     // end loop
 
     pthread_join(inputThreadId, NULL);
