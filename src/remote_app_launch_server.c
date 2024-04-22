@@ -13,7 +13,8 @@ struct command_node {
 struct client_node {
     int clientSocket;
     char* clientName;
-    struct command_node* commandsHead;
+    struct command_node* commandsQueueHead;
+    struct command_node* commandsQueueTail;
     struct client_node* next;
 };
 
@@ -29,13 +30,13 @@ struct client_node* add_client(struct client_node** headPtr, int clientSocket, c
         }
         strcpy(newNode->clientName, clientName);
         newNode->clientSocket = clientSocket;
-        newNode->commandsHead = NULL;
+        newNode->commandsQueueHead = NULL;
+        newNode->commandsQueueTail = NULL;
         newNode->next = *headPtr;
         *headPtr = newNode;
     }
     return newNode;
 }
-// todo add/remove command
 
 struct client_node* find(struct client_node* node, int clientSocket) {
     while (node != NULL) {
@@ -45,6 +46,57 @@ struct client_node* find(struct client_node* node, int clientSocket) {
         node = node->next;
     }
     return NULL;
+}
+
+struct client_node* push_command(struct client_node* head, const char* clientName, const char* requestCommand, const char* application) {
+    while (head != NULL) {
+        if (strcmp(head->clientName, clientName) == 0) {
+            break;
+        }
+        head = head->next;
+    }
+    if (head == NULL) {
+        return NULL;
+    }
+
+    struct command_node* newNode = (struct command_node*)malloc(sizeof(struct command_node));
+    size_t len1 = strlen(requestCommand);
+    size_t len2 = strlen(application);
+    newNode->requestCommand = (char *)malloc((len1 + len2 + 2) * sizeof(char));
+    if (newNode->requestCommand == NULL) {
+        printf("Failed to allocate memory for requestCommand and application\n");
+        free(newNode);
+        return NULL;
+    }
+    strcpy(newNode->requestCommand, requestCommand);
+    newNode->application = newNode->requestCommand + len1;
+    strcpy(newNode->application, application);
+    newNode->next = NULL;
+
+    if (head->commandsQueueHead == NULL) {
+        head->commandsQueueHead = newNode;
+        head->commandsQueueTail = newNode;
+    } else {
+        head->commandsQueueTail->next = newNode;
+        head->commandsQueueTail = newNode;
+    }
+    return head;
+}
+
+struct client_node* pop_command(struct client_node* node) {
+    if (node == NULL || node->commandsQueueHead == NULL) {
+        return NULL;
+    }
+
+    if (node->commandsQueueHead->next == NULL) {
+        node->commandsQueueTail = NULL;
+    }
+    struct command_node* temp = node->commandsQueueHead;
+    node->commandsQueueHead = node->commandsQueueHead->next;
+    free(temp->requestCommand);
+    free(temp->application);
+    free(temp);
+    return node;
 }
 
 void delete(struct client_node** headPtr, int clientSocket) {
@@ -141,17 +193,17 @@ int main() {
 
     printf("Enter client name and command (run/kill):\n> ");
     fgets(input, sizeof(input), stdin);
-    sscanf(input, "%s %s", clientName, requestCommand);
+    sscanf(input, "%s %s %[^\n]", clientName, requestCommand, application);
 
     if (strcmp(requestCommand, "run") == 0) {
-        sscanf(input, "%*s %*s %[^\n]", application);
+        push_command(clients, clientName, requestCommand, application);
         requestLength = send_request(clientSocket, requestCommand, application); // run app argv
     } else if (strcmp(requestCommand, "kill") == 0) {
         char *endPtr = application;
-        sscanf(input, "%*s %*s %[^\n]", application);
         // a || (b && c)
         // Short-circuit evaluation: (a) is evaluated first. if a = 1, (b && c) are not evaluated
         if (strcmp(application, "all") == 0 || (strtol(application, &endPtr, 0) > 0 && endPtr != application)) {
+            push_command(clients, clientName, requestCommand, application);
             requestLength = send_request(clientSocket, requestCommand, application); // kill pid/all
         }
     } else {
