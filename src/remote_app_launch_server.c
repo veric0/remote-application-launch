@@ -1,8 +1,13 @@
 #include <stdio.h>  // printf, fgets, scanf, sprintf
 #include <string.h> // strcmp, strlen
 #include <stdlib.h> // malloc
+#include <pthread.h>
 
 #include "network_manager/network_manager.h"
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int quitSignal = 0;
+struct client_node* clients = NULL;
 
 struct command_node {
     char* requestCommand;
@@ -166,13 +171,34 @@ int is_kill_command(const char* command, const char* application) {
                     endPtr != application));
 }
 
-int main() {
+void* input_thread_func(void* vargp) {
     char input[300];
     char clientName[30];
     char requestCommand[30];
-    char application[100];
+    char application[250];
+
+    while (1) {
+        printf("Enter client name and command (run/kill) or (q) for exit:\n> ");
+        fgets(input, sizeof(input), stdin);
+        sscanf(input, "%s %s %[^\n]", clientName, requestCommand, application);
+        if (is_run_command(requestCommand) || is_kill_command(requestCommand, application)) {
+            pthread_mutex_lock(&mutex);
+            push_command(clients, clientName, requestCommand, application);
+            pthread_mutex_unlock(&mutex);
+        } else if (strcmp(clientName, "q") == 0) { // if first word is (q)
+            quitSignal = 1;
+            pthread_exit(NULL);
+        } else {
+            printf("Invalid command \"%s\", \"%s\". Try again.\n", requestCommand, application);
+        }
+    }
+}
+
+int main() {
+    char buffer[300];
+    char clientName[30];
     long requestLength = 0;
-    struct client_node* clients = NULL;
+    pthread_t inputThreadId;
 
     int serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -187,6 +213,8 @@ int main() {
         printf("Listen failed.\n");
         return 3;
     }
+
+    pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
 
     // loop:
     int clientSocket = accept_client(serverSocket);
@@ -205,17 +233,7 @@ int main() {
 
     clients = add_client(&clients, clientSocket, clientName);
 
-    printf("Enter client name and command (run/kill):\n> ");
-    fgets(input, sizeof(input), stdin);
-    sscanf(input, "%s %s %[^\n]", clientName, requestCommand, application);
-
-    if (is_run_command(requestCommand) ||
-            is_kill_command(requestCommand, application)) {
-        push_command(clients, clientName, requestCommand, application);
-    } else {
-        printf("Invalid command \"%s\" \"%s\"\n", requestCommand, application);
-        return 11;
-    }
+//    sleep(10);
 
     if (strcmp(clients->clientName, clientName) == 0) {
         requestLength = send_request(clients->clientSocket,
@@ -226,9 +244,9 @@ int main() {
 
         for (int i = 0; i < 100; ++i) {
             printf("%d\n", i);
-            requestLength = recv_message(clientSocket, input, sizeof(input));
+            requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
             if (requestLength > 0) {
-                puts(input);
+                puts(buffer);
             } else {
                 printf("requestLength = %ld\n", requestLength);
                 return -1;
@@ -239,6 +257,8 @@ int main() {
 
     close_socket(clientSocket);
     // end loop
+
+    pthread_join(inputThreadId, NULL);
 
     close_host_socket(serverSocket);
 
