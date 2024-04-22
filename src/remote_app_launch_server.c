@@ -1,8 +1,82 @@
-#include <stdio.h> // printf, fgets, scanf, sprintf
+#include <stdio.h>  // printf, fgets, scanf, sprintf
 #include <string.h> // strcmp, strlen
-#include <stdlib.h>
+#include <stdlib.h> // malloc
 
 #include "network_manager/network_manager.h"
+
+struct command_node {
+    char* requestCommand;
+    char* application;
+    struct command_node* next;
+};
+
+struct client_node {
+    int clientSocket;
+    char* clientName;
+    struct command_node* commandsHead;
+    struct client_node* next;
+};
+
+struct client_node* add_client(struct client_node** headPtr, int clientSocket, const char* clientName) {
+    struct client_node* newNode = (struct client_node*)malloc(sizeof(struct client_node));
+    if (newNode != NULL) {
+        size_t len = strlen(clientName);
+        newNode->clientName = (char *)malloc((len + 1) * sizeof(char));
+        if (newNode->clientName == NULL) {
+            printf("Failed to allocate memory for clientName\n");
+            free(newNode);
+            return NULL;
+        }
+        strcpy(newNode->clientName, clientName);
+        newNode->clientSocket = clientSocket;
+        newNode->commandsHead = NULL;
+        newNode->next = *headPtr;
+        *headPtr = newNode;
+    }
+    return newNode;
+}
+// todo add/remove command
+
+struct client_node* find(struct client_node* node, int clientSocket) {
+    while (node != NULL) {
+        if (node->clientSocket == clientSocket) {
+            return node;
+        }
+        node = node->next;
+    }
+    return NULL;
+}
+
+void delete(struct client_node** headPtr, int clientSocket) {
+    struct client_node* current = *headPtr;
+    struct client_node* prev = NULL;
+    while (current != NULL && current->clientSocket != clientSocket) {
+        prev = current;
+        current = current->next;
+    }
+    if (current == NULL) {
+        return;
+    }
+    if (prev == NULL) {
+        *headPtr = current->next;
+    } else {
+        prev->next = current->next;
+    }
+    free(current->clientName);
+    free(current);
+}
+
+void deleteAll(struct client_node** headPtr) {
+    struct client_node* current = *headPtr;
+    struct client_node* next;
+    while (current != NULL) {
+        next = current->next;
+        free(current->clientName);
+        free(current);
+        current = next;
+    }
+    *headPtr = NULL;
+}
 
 long send_request(int clientSocket, const char* requestCommand, const char* application) {
     char request[250];
@@ -32,6 +106,7 @@ int main() {
     char requestCommand[30];
     char application[100];
     long requestLength = 0;
+    struct client_node* clients = NULL;
 
     int serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -46,7 +121,10 @@ int main() {
         printf("Listen failed.\n");
         return 3;
     }
+
+    // loop:
     int clientSocket = accept_client(serverSocket);
+    printf("! clientSocket = %d\n", clientSocket);
     if (clientSocket == -1) {
         printf("Accept failed.\n");
         return 5;
@@ -58,6 +136,8 @@ int main() {
         return -1;
     }
     printf("Client name: \"%s\"\n! requestLength = %ld\n", clientName, requestLength);
+
+    clients = add_client(&clients, clientSocket, clientName);
 
     printf("Enter client name and command (run/kill):\n> ");
     fgets(input, sizeof(input), stdin);
@@ -85,17 +165,21 @@ int main() {
         requestLength = recv_message(clientSocket, input, sizeof(input));
         if (requestLength > 0) {
             puts(input);
-        } else {
             printf("! requestLength = %ld\n", requestLength);
+        } else {
+            printf("requestLength = %ld\n", requestLength);
             return -1;
         }
     }
 
-    printf("! serverSocket = %d\n", serverSocket);
-    printf("! clientSocket = %d\n", clientSocket);
-    printf("! requestLength = %ld\n", requestLength);
+    delete(&clients, clientSocket);
     close_socket(clientSocket);
+    // end loop
+
     close_host_socket(serverSocket);
 
+    if (clients != NULL) {
+        deleteAll(&clients);
+    }
     return 0;
 }
