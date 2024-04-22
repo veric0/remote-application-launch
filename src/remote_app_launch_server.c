@@ -69,7 +69,7 @@ struct client_node* push_command(struct client_node* head, const char* clientNam
         return NULL;
     }
     strcpy(newNode->requestCommand, requestCommand);
-    newNode->application = newNode->requestCommand + len1;
+    newNode->application = newNode->requestCommand + len1 + 1;
     strcpy(newNode->application, application);
     newNode->next = NULL;
 
@@ -93,13 +93,13 @@ struct client_node* pop_command(struct client_node* node) {
     }
     struct command_node* temp = node->commandsQueueHead;
     node->commandsQueueHead = node->commandsQueueHead->next;
-    free(temp->requestCommand);
-    free(temp->application);
+
+    free(temp->requestCommand); // requestCommand and application together
     free(temp);
     return node;
 }
 
-void delete(struct client_node** headPtr, int clientSocket) {
+void delete_client(struct client_node** headPtr, int clientSocket) {
     struct client_node* current = *headPtr;
     struct client_node* prev = NULL;
     while (current != NULL && current->clientSocket != clientSocket) {
@@ -118,7 +118,7 @@ void delete(struct client_node** headPtr, int clientSocket) {
     free(current);
 }
 
-void deleteAll(struct client_node** headPtr) {
+void delete_all_clients(struct client_node** headPtr) {
     struct client_node* current = *headPtr;
     struct client_node* next;
     while (current != NULL) {
@@ -150,6 +150,20 @@ long send_request(int clientSocket, const char* requestCommand, const char* appl
         return -1;
     }
     return request_len;
+}
+
+int is_run_command(const char* command) {
+    return strcmp(command, "run") == 0;
+}
+
+int is_kill_command(const char* command, const char* application) {
+    char *endPtr = application;
+    // a && (b || (c && d))
+    // Short-circuit evaluation: if (a) is true, (b) is evaluated. if (b) is true, (c && d) are not evaluated.
+    return strcmp(command, "kill") == 0 &&
+                (strcmp(application, "all") == 0 ||
+                (strtol(application, &endPtr, 0) > 0 &&
+                    endPtr != application));
 }
 
 int main() {
@@ -195,43 +209,41 @@ int main() {
     fgets(input, sizeof(input), stdin);
     sscanf(input, "%s %s %[^\n]", clientName, requestCommand, application);
 
-    if (strcmp(requestCommand, "run") == 0) {
+    if (is_run_command(requestCommand) ||
+            is_kill_command(requestCommand, application)) {
         push_command(clients, clientName, requestCommand, application);
-        requestLength = send_request(clientSocket, requestCommand, application); // run app argv
-    } else if (strcmp(requestCommand, "kill") == 0) {
-        char *endPtr = application;
-        // a || (b && c)
-        // Short-circuit evaluation: (a) is evaluated first. if a = 1, (b && c) are not evaluated
-        if (strcmp(application, "all") == 0 || (strtol(application, &endPtr, 0) > 0 && endPtr != application)) {
-            push_command(clients, clientName, requestCommand, application);
-            requestLength = send_request(clientSocket, requestCommand, application); // kill pid/all
-        }
     } else {
-        printf("Invalid command \"%s\"\n", requestCommand);
-        return 111;
+        printf("Invalid command \"%s\" \"%s\"\n", requestCommand, application);
+        return 11;
     }
-    printf("! requestLength = %ld\n", requestLength);
 
-    for (int i = 0; i < 100; ++i) {
-        printf("%d\n", i);
-        requestLength = recv_message(clientSocket, input, sizeof(input));
-        if (requestLength > 0) {
-            puts(input);
-            printf("! requestLength = %ld\n", requestLength);
-        } else {
-            printf("requestLength = %ld\n", requestLength);
-            return -1;
+    if (strcmp(clients->clientName, clientName) == 0) {
+        requestLength = send_request(clients->clientSocket,
+                                     clients->commandsQueueHead->requestCommand,
+                                     clients->commandsQueueHead->application);
+        printf("! requestLength = %ld\n", requestLength);
+        pop_command(clients);
+
+        for (int i = 0; i < 100; ++i) {
+            printf("%d\n", i);
+            requestLength = recv_message(clientSocket, input, sizeof(input));
+            if (requestLength > 0) {
+                puts(input);
+            } else {
+                printf("requestLength = %ld\n", requestLength);
+                return -1;
+            }
         }
+        delete_client(&clients, clients->clientSocket);
     }
 
-    delete(&clients, clientSocket);
     close_socket(clientSocket);
     // end loop
 
     close_host_socket(serverSocket);
 
     if (clients != NULL) {
-        deleteAll(&clients);
+        delete_all_clients(&clients);
     }
     return 0;
 }
