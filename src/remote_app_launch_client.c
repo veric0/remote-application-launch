@@ -73,30 +73,40 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
     printf("! Receiving: \"%s\", \"%s\"", requestCommand, application);
     printf("\n! received_len = %ld\n", requestLength);
 
-    if (strcmp(requestCommand, "run1") == 0 || strcmp(requestCommand, "run2") == 0) {
+    if (strcmp(requestCommand, "run") == 0) {
         int pid = launch_process(application);
         if (pid == -1) {
             printf("launch_process failed.\n");
             return -1;
         } else {
             append(pidsPtr, pid);
-            // response success to server
+            // todo response success to server
         }
         return pid;
-    } else if (strcmp(requestCommand, "kill1") == 0) {
-//        todo in loop terminate_process();
-    } else if (strcmp(requestCommand, "kill2") == 0) {
-        long lpid = strtol(application, NULL, 10);
-        if (lpid <= 0 || lpid >= INT_MAX) {
-            return -1;
-        }
-        int pid = (int)lpid;
-        if (terminate_process(pid) == 0) {
-            delete(pidsPtr, pid);
-            return 0;
+    } else if (strcmp(requestCommand, "kill") == 0) {
+        if (strcmp (application, "all") == 0) {
+            while (*pidsPtr != NULL) {
+                if (terminate_process((*pidsPtr)->pid) == 0) {
+                    delete(pidsPtr, (*pidsPtr)->pid);
+                    return 0;
+                } else {
+                    printf("terminate_process %d failed.\n", (*pidsPtr)->pid);
+                    return -1;
+                }
+            }
         } else {
-            printf("terminate_process failed.\n");
-            return -1;
+            long lpid = strtol(application, NULL, 10);
+            if (lpid <= 0 || lpid >= INT_MAX) {
+                return -1;
+            }
+            int pid = (int)lpid;
+            if (terminate_process(pid) == 0) {
+                delete(pidsPtr, pid);
+                return 0;
+            } else {
+                printf("terminate_process %d failed.\n", pid);
+                return -1;
+            }
         }
     } else {
         printf("Unknown request received: \"%s\"", requestCommand);
