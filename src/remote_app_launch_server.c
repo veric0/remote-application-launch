@@ -2,7 +2,6 @@
 #include <string.h> // strcmp, strlen
 #include <stdlib.h> // malloc
 #include <pthread.h>
-#include <unistd.h>
 
 #include "network_manager/network_manager.h"
 
@@ -45,26 +44,21 @@ struct client_node* add_client(struct client_node** headPtr, int clientSocket, c
     return newNode;
 }
 
-struct client_node* find(struct client_node* node, int clientSocket) {
-    while (node != NULL) {
-        if (node->clientSocket == clientSocket) {
-            return node;
-        }
-        node = node->next;
-    }
-    return NULL;
-}
-
 struct client_node* push_command(struct client_node* head, const char* clientName, const char* requestCommand, const char* application) {
+//    printf("!!! push client1 %p, c = \"%s\", rc = \"%s\", a = \"%s\"\n", head, clientName, requestCommand, application);
     while (head != NULL) {
+//        printf("!!! push loop \"%s\", c = \"%s\"\n", head->clientName, clientName);
         if (strcmp(head->clientName, clientName) == 0) {
             break;
         }
         head = head->next;
     }
+//    printf("!!! push client2 %p, c = \"%s\", rc = \"%s\", a = \"%s\"\n", head, clientName, requestCommand, application);
     if (head == NULL) {
         return NULL;
     }
+//    printf("!!! push client3 \"%s\", c = \"%s\", rc = \"%s\", a = \"%s\"\n", head->clientName, clientName, requestCommand, application);
+//    printf("!!! push node queue before \"%s\", h = %p, t = %p\n", head->clientName, head->commandsQueueHead, head->commandsQueueTail);
 
     struct command_node* newNode = (struct command_node*)malloc(sizeof(struct command_node));
     size_t len1 = strlen(requestCommand);
@@ -87,6 +81,7 @@ struct client_node* push_command(struct client_node* head, const char* clientNam
         head->commandsQueueTail->next = newNode;
         head->commandsQueueTail = newNode;
     }
+//    printf("!!! push node queue after \"%s\", h = %p, t = %p\n", head->clientName, head->commandsQueueHead, head->commandsQueueTail);
     return head;
 }
 
@@ -160,16 +155,22 @@ void* input_thread_func(void* vargp) {
     while (1) {
         printf("Enter client name and command (run/kill) or (q) for exit:\n> ");
         fgets(input, sizeof(input), stdin);
+//        printf("!! input \"%s\"\n", input);
         sscanf(input, "%s", clientName);
         if (strcmp(clientName, "q") == 0) { // if first word is (q)
             quitSignal = 1;
             pthread_exit(NULL);
         } else {
             sscanf(input, "%*s %s %[^\n]", requestCommand, application);
+//            printf("!! input c = \"%s\", rc = \"%s\", a = \"%s\"\n", clientName, requestCommand, application);
             if (is_run_command(requestCommand) || is_kill_command(requestCommand, application)) {
+//                printf("!! input push\n");
                 pthread_mutex_lock(&mutex);
+//                printf("!! input lock\n");
                 push_command(clients, clientName, requestCommand, application);
+//                printf("!! input lock2\n");
                 pthread_mutex_unlock(&mutex);
+//                printf("!! input unlock\n");
             } else {
                 printf("Invalid command \"%s\", \"%s\". Try again.\n", requestCommand, application);
             }
@@ -193,7 +194,7 @@ long send_request(int clientSocket, const char* requestCommand, const char* appl
         return -1;
     }
     requestLength = send_message(clientSocket, request, strlen(request) + 1);
-    printf("! send request %ld \"%s\"\n", requestLength, request);
+//    printf("! send request %ld \"%s\"\n", requestLength, request);
     if (requestLength < 0) {
         return -1;
     }
@@ -218,13 +219,14 @@ void* handle_client(void* vargp) {
 
     pthread_mutex_lock(&mutex);
     client = add_client(&clients, clientSocket, clientName);
+//    printf("! client %p, %d, \"%s\"\n", client, client->clientSocket, client->clientName);
     pthread_mutex_unlock(&mutex);
 
     send_request(client->clientSocket, "ok", "ok");
 
     int temp = 0;
     while (!quitSignal) {
-        printf("! temp %d\n", ++temp);
+        printf("\n! temp %d\n", ++temp);
         requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
         if (requestLength > 0) {
             puts(buffer);
@@ -237,7 +239,9 @@ void* handle_client(void* vargp) {
             return NULL;
         }
         pthread_mutex_lock(&mutex);
+//        printf("! client queue before \"%s\", h = %p, t = %p\n", client->clientName, client->commandsQueueHead, client->commandsQueueTail);
         if (client->commandsQueueHead != NULL) {
+//            printf("! before pop command %p, rc = \"%s\", a = \"%s\", n = %p\n", client->commandsQueueHead, client->commandsQueueHead->requestCommand, client->commandsQueueHead->application, client->commandsQueueHead->next);
             send_request(client->clientSocket,
                          client->commandsQueueHead->requestCommand,
                          client->commandsQueueHead->application);
@@ -245,6 +249,7 @@ void* handle_client(void* vargp) {
         } else {
             send_request(client->clientSocket, "ok", "ok");
         }
+//        printf("! client queue after \"%s\", h = %p, t = %p\n", client->clientName, client->commandsQueueHead, client->commandsQueueTail);
         pthread_mutex_unlock(&mutex);
 
     }
@@ -283,10 +288,15 @@ int main() {
             continue;
         }
         handle_client((void*)(&clientSocket));
-//        pthread_create(clientThreadsIds + i, NULL, handle_client, NULL);
+//        pthread_create(clientThreadsIds + i, NULL, handle_client, NULL); // todo handle client in new thread
     }
 
+//    printf("! cancel input\n");
+    pthread_cancel(inputThreadId);
+//    printf("! join input\n");
     pthread_join(inputThreadId, NULL);
+//    printf("! join completed\n");
+
 //    for (int i = 0; i < MAX_CLIENTS; ++i) {
 //        pthread_join(clientThreadsIds[i], NULL);
 //    }

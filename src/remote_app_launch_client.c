@@ -100,12 +100,12 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
     char application[230];
 
     long requestLength = recv_message(serverSocket, buffer, sizeof(buffer));
-    printf("! handle requestLength = %zu\n", requestLength);
+//    printf("! handle requestLength = %zu\n", requestLength);
     if (requestLength <= 0) {
         return requestLength;
     }
     sscanf(buffer, "%s %[^\n]", requestCommand, application);
-    printf("! Receiving: \"%s\", \"%s\"\n", requestCommand, application);
+//    printf("! Receiving: \"%s\", \"%s\"\n", requestCommand, application);
 
     if (strcmp(requestCommand, "run") == 0) {
         int pid = launch_process(application);
@@ -132,7 +132,7 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
         delete_process(pidsPtr, pid);
         return pid;
     } else if (strcmp(requestCommand, "ok") == 0) {
-        printf("! ok\n");
+//        printf("! ok\n");
         return 0;
     }
     printf("Unknown request received: \"%s\"\n", requestCommand);
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
     }
 
     clientNameLength = strlen(clientName);
-    requestLength = send_message(clientSocket, clientName, clientNameLength);
+    requestLength = send_message(clientSocket, clientName, clientNameLength + 1);
     if (requestLength == -1 || requestLength < clientNameLength) {
         printf("Client name not send (%ld of %zu).\n", requestLength, clientNameLength);
         return 1;
@@ -172,6 +172,7 @@ int main(int argc, char* argv[]) {
 
     int temp = 0;
     while (quitSignal >= 0) {
+        printf("\n! temp %d\n", ++temp);
         if (quitSignal == 1) {
             sprintf(output, "Client \"%s\": disconnected.", clientName);
         } else {
@@ -179,12 +180,11 @@ int main(int argc, char* argv[]) {
         }
         send_response(clientSocket, output);
         quitSignal = handle_request(clientSocket, &pids);
-        printf("! sleep %d\n", ++temp);
         sleep_wrapper(1);
     }
     close_host_socket(clientSocket);
 
-    printf("! Clean up\n"); // todo Ctrl-C
+//    printf("! Clean up\n"); // todo Ctrl-C
     struct Node* current = pids;
     while (current != NULL) {
         if (terminate_process(current->pid) == -1) {
@@ -194,6 +194,6 @@ int main(int argc, char* argv[]) {
     }
 
     delete_all_processes(&pids);
-    printf("! Clean up completed\n");
+//    printf("! Clean up completed\n");
     return 0;
 }
