@@ -7,7 +7,7 @@ Client/Server application <b> to launch and track application on the remote host
 - when the application is closed by another application Client has to replay to the server also.
 - server can request to close the application with `<application name>`
 
-## Requirements:
+### Task Requirements:
 The following approaches are required:
 - Console application.
 - “`make`” file to compile application.
@@ -19,6 +19,7 @@ For threading, networking should be used platform-dependent API. (details can be
 Application logic must be divided between Network and System API.
 - Platform-dependent code must be in a separate module.
 - Network-dependent code must be in a separate module.
+
 
 # Installation
 ## Linux
