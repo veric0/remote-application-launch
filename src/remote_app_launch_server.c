@@ -5,6 +5,7 @@
 
 #include "network_manager/network_manager.h"
 
+// global variables used by all threads:
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int quitSignal = 0, serverSocket = -1;
 const int MAX_CLIENTS = 1;
@@ -213,9 +214,7 @@ void* handle_client(void* vargp) {
     send_request(client->clientSocket, "ok", "ok");
     printf("Client \"%s\" connected.\n", clientName);
 
-    int temp = 0;
     while (!quitSignal) {
-        printf("\n! temp %d\n", ++temp);
         requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
         if (requestLength > 0) {
             puts(buffer);
@@ -225,7 +224,7 @@ void* handle_client(void* vargp) {
             }
         } else {
             printf("Unable to read request from client \"%s\".\n", clientName);
-            return NULL;
+            pthread_exit(NULL);
         }
         pthread_mutex_lock(&mutex);
         if (client->commandsQueueHead != NULL) {
@@ -242,14 +241,16 @@ void* handle_client(void* vargp) {
     pthread_mutex_lock(&mutex);
     delete_client(&client, client->clientSocket);
     pthread_mutex_unlock(&mutex);
+
     close_socket(clientSocket);
     printf("Client \"%s\" disconnected.\n", clientName);
-    return NULL;
+    pthread_exit(NULL);
 }
 
 int main() {
     pthread_t inputThreadId;
-//    pthread_t clientThreadsIds[MAX_CLIENTS];
+    pthread_t clientThreadsIds[MAX_CLIENTS];
+    int clientSockets[MAX_CLIENTS];
 
     serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -260,7 +261,7 @@ int main() {
         puts("Bind failed.");
         return 2;
     }
-    if (listen_port(serverSocket) == -1) {
+    if (listen_port(serverSocket, MAX_CLIENTS) == -1) {
         puts("Listen failed.");
         return 3;
     }
@@ -269,21 +270,20 @@ int main() {
 
     for (int i = 0; i < MAX_CLIENTS; ++i) {
         puts("Waiting for client to connect...");
-        int clientSocket = accept_client(serverSocket);
-        if (clientSocket == -1) {
+        clientSockets[i] = accept_client(serverSocket);
+        if (clientSockets[i] == -1) {
             puts("Accept failed.");
             continue;
         }
-        handle_client((void*)(&clientSocket));
-//        pthread_create(clientThreadsIds + i, NULL, handle_client, NULL); // todo handle client in new thread
+        pthread_create(clientThreadsIds + i, NULL, handle_client, (void*)(clientSockets + i));
     }
 
     pthread_cancel(inputThreadId);
     pthread_join(inputThreadId, NULL);
 
-//    for (int i = 0; i < MAX_CLIENTS; ++i) {
-//        pthread_join(clientThreadsIds[i], NULL);
-//    }
+    for (int i = 0; i < MAX_CLIENTS; ++i) {
+        pthread_join(clientThreadsIds[i], NULL);
+    }
 
     close_host_socket(serverSocket);
 
