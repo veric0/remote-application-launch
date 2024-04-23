@@ -27,8 +27,11 @@ int bind_socket(int serverSocket, uint16_t port) {
     return 0;
 }
 
-int listen_port(int serverSocket) {
-    if (listen(serverSocket, 1) == -1) {
+int listen_port(int serverSocket, int n) {
+    if (n < 1) {
+        return -1;
+    }
+    if (listen(serverSocket, n) == -1) {
         close(serverSocket);
         return -1;
     }

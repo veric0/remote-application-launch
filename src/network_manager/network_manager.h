@@ -22,7 +22,7 @@ int bind_socket(int serverSocket, uint16_t port);
  * Listen to connections to socket
  * @return 0 on success, -1 on error
  */
-int listen_port(int serverSocket);
+int listen_port(int serverSocket, int n);
 
 /**
  * Initiate connection to a server socket by given IP and port
