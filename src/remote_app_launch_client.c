@@ -1,7 +1,7 @@
-#include <stdio.h>  // printf, putchar, sscanf
+#include <stdio.h>  // printf, sprintf, puts, sscanf
 #include <string.h> // strcmp, strlen
 #include <stddef.h> // size_t
-#include <stdlib.h> // strtol, malloc
+#include <stdlib.h> // strtol, malloc, free
 #include <limits.h> // INT_MAX
 
 #include "network_manager/network_manager.h"
@@ -73,21 +73,27 @@ void check_all_processes(const char* clientName, struct Node** pidsPtr, char* bu
     while (current != NULL) {
         next = current->next;
         switch (get_process_state(current->pid)) {
-            case 0:
+            case 0: {
                 length += sprintf(buffer + length, "\n  Process %d is still running.", current->pid);
                 break;
-            case 1:
+            }
+            case 1: {
                 length += sprintf(buffer + length, "\n  Process %d is exited.", current->pid);
                 delete_process(pidsPtr, current->pid);
                 break;
-            case 2:
+            }
+            case 2: {
                 length += sprintf(buffer + length, "\n  Process %d is terminated.", current->pid);
                 delete_process(pidsPtr, current->pid);
                 break;
-            default: // -1
-                length += sprintf(buffer + length, "\n  Get_process_status for %d is failed.", current->pid);
+            }
+            default: /* -1 */ {
+                char* startPtr = buffer + length;
+                length += sprintf(startPtr, "\n  Failed to get process %d status.", current->pid);
+                puts(startPtr + 3); // skip "\n  "
                 delete_process(pidsPtr, current->pid);
                 break;
+            }
         }
         current = next;
     }
@@ -100,23 +106,24 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
     char application[230];
 
     long requestLength = recv_message(serverSocket, buffer, sizeof(buffer));
-//    printf("! handle requestLength = %zu\n", requestLength);
     if (requestLength <= 0) {
         return requestLength;
     }
     sscanf(buffer, "%s %[^\n]", requestCommand, application);
-//    printf("! Receiving: \"%s\", \"%s\"\n", requestCommand, application);
 
     if (strcmp(requestCommand, "run") == 0) {
+        printf("Received new command: \"run %s\".\n", application);
         int pid = launch_process(application);
         if (pid == -1) {
             printf("launch_process failed.\n");
             return -1;
         }
         add_process(pidsPtr, pid);
+        printf("Created new process %d.\n", pid);
         return pid;
     } else if (strcmp(requestCommand, "kill") == 0) {
         if (strcmp (application, "all") == 0) { // disconnect client
+            puts("Received new command: \"disconnect\".");
             return 1;
         }
         long lpid = strtol(application, NULL, 10);
@@ -124,18 +131,19 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
             return -1;
         }
         int pid = (int)lpid;
+        printf("Received new command: \"kill %d\".\n", pid);
         // todo check for pid in pids
         if (terminate_process(pid) == -1) {
-            printf("terminate_process \"%d\" failed.\n", pid);
+            printf("Kill process \"%d\" failed.\n", pid);
             return -1;
         }
         delete_process(pidsPtr, pid);
+        printf("Process %d killed.\nn", pid);
         return pid;
     } else if (strcmp(requestCommand, "ok") == 0) {
-//        printf("! ok\n");
         return 0;
     }
-    printf("Unknown request received: \"%s\"\n", requestCommand);
+    printf("Unknown request received: \"%s\".\n", requestCommand);
     return -1;
 }
 
@@ -143,7 +151,7 @@ int main(int argc, char* argv[]) {
     char output[300];
     char clientName[30];
     size_t clientNameLength = 0;
-    long requestLength, quitSignal = 0;
+    long requestLength, quitSignal = 0, loopIndex = 0;
     int clientSocket;
     struct Node* pids = NULL;
 
@@ -155,26 +163,28 @@ int main(int argc, char* argv[]) {
 
     clientSocket = create_socket();
     if (clientSocket == -1) {
-        printf("Failed to create socket.\n");
+        puts("Failed to create socket.");
         return 1;
     }
     if (connect_to_server(clientSocket, "127.0.0.1", 8881) == -1) {
-        printf("Connection failed.\n");
+        puts("Connection failed.");
         return 4;
     }
 
+    puts("Sending name to server...");
     clientNameLength = strlen(clientName);
     requestLength = send_message(clientSocket, clientName, clientNameLength + 1);
     if (requestLength == -1 || requestLength < clientNameLength) {
-        printf("Client name not send (%ld of %zu).\n", requestLength, clientNameLength);
+        printf("Client name not sent (%ld of %zu).\n", requestLength, clientNameLength);
         return 1;
     }
+    puts("Connected.");
 
-    int temp = 0;
     while (quitSignal >= 0) {
-        printf("\n! temp %d\n", ++temp);
+        printf("Loop %ld\n", ++loopIndex);
         if (quitSignal == 1) {
             sprintf(output, "Client \"%s\": disconnected.", clientName);
+            puts("Disconnecting...");
         } else {
             check_all_processes(clientName, &pids, output);
         }
@@ -184,16 +194,15 @@ int main(int argc, char* argv[]) {
     }
     close_host_socket(clientSocket);
 
-//    printf("! Clean up\n"); // todo Ctrl-C
     struct Node* current = pids;
     while (current != NULL) {
         if (terminate_process(current->pid) == -1) {
-            printf("terminate %d failed.\n", current->pid);
+            printf("Terminate %d failed.\n", current->pid);
         }
         current = current->next;
     }
-
     delete_all_processes(&pids);
-//    printf("! Clean up completed\n");
+
+    puts("Disconnected.");
     return 0;
 }

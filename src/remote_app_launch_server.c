@@ -1,6 +1,6 @@
-#include <stdio.h>  // printf, fgets, scanf, sprintf
-#include <string.h> // strcmp, strlen
-#include <stdlib.h> // malloc
+#include <stdio.h>  // printf, puts, fgets, sscanf, sprintf
+#include <string.h> // strcmp, strlen, strcpy, strstr
+#include <stdlib.h> // malloc, free, strtol
 #include <pthread.h>
 
 #include "network_manager/network_manager.h"
@@ -30,7 +30,7 @@ struct client_node* add_client(struct client_node** headPtr, int clientSocket, c
         size_t len = strlen(clientName);
         newNode->clientName = (char *)malloc((len + 1) * sizeof(char));
         if (newNode->clientName == NULL) {
-            printf("Failed to allocate memory for clientName\n");
+            puts("Failed to allocate memory for client name.");
             free(newNode);
             return NULL;
         }
@@ -45,27 +45,22 @@ struct client_node* add_client(struct client_node** headPtr, int clientSocket, c
 }
 
 struct client_node* push_command(struct client_node* head, const char* clientName, const char* requestCommand, const char* application) {
-//    printf("!!! push client1 %p, c = \"%s\", rc = \"%s\", a = \"%s\"\n", head, clientName, requestCommand, application);
     while (head != NULL) {
-//        printf("!!! push loop \"%s\", c = \"%s\"\n", head->clientName, clientName);
         if (strcmp(head->clientName, clientName) == 0) {
             break;
         }
         head = head->next;
     }
-//    printf("!!! push client2 %p, c = \"%s\", rc = \"%s\", a = \"%s\"\n", head, clientName, requestCommand, application);
     if (head == NULL) {
         return NULL;
     }
-//    printf("!!! push client3 \"%s\", c = \"%s\", rc = \"%s\", a = \"%s\"\n", head->clientName, clientName, requestCommand, application);
-//    printf("!!! push node queue before \"%s\", h = %p, t = %p\n", head->clientName, head->commandsQueueHead, head->commandsQueueTail);
 
     struct command_node* newNode = (struct command_node*)malloc(sizeof(struct command_node));
     size_t len1 = strlen(requestCommand);
     size_t len2 = strlen(application);
     newNode->requestCommand = (char *)malloc((len1 + len2 + 2) * sizeof(char));
     if (newNode->requestCommand == NULL) {
-        printf("Failed to allocate memory for requestCommand and application\n");
+        puts("Failed to allocate memory for command and application.");
         free(newNode);
         return NULL;
     }
@@ -81,7 +76,6 @@ struct client_node* push_command(struct client_node* head, const char* clientNam
         head->commandsQueueTail->next = newNode;
         head->commandsQueueTail = newNode;
     }
-//    printf("!!! push node queue after \"%s\", h = %p, t = %p\n", head->clientName, head->commandsQueueHead, head->commandsQueueTail);
     return head;
 }
 
@@ -142,7 +136,7 @@ int is_kill_command(const char* command, const char* application) {
     // Short-circuit evaluation: if (a) is true, (b) is evaluated. if (b) is true, (c && d) are not evaluated.
     return strcmp(command, "kill") == 0 &&
                 (strcmp(application, "all") == 0 ||
-                (strtol(application, &endPtr, 0) > 0 &&
+                (strtol(application, &endPtr, 0) > 0l &&
                     endPtr != application));
 }
 
@@ -155,22 +149,16 @@ void* input_thread_func(void* vargp) {
     while (1) {
         printf("Enter client name and command (run/kill) or (q) for exit:\n> ");
         fgets(input, sizeof(input), stdin);
-//        printf("!! input \"%s\"\n", input);
         sscanf(input, "%s", clientName);
         if (strcmp(clientName, "q") == 0) { // if first word is (q)
             quitSignal = 1;
             pthread_exit(NULL);
         } else {
             sscanf(input, "%*s %s %[^\n]", requestCommand, application);
-//            printf("!! input c = \"%s\", rc = \"%s\", a = \"%s\"\n", clientName, requestCommand, application);
             if (is_run_command(requestCommand) || is_kill_command(requestCommand, application)) {
-//                printf("!! input push\n");
                 pthread_mutex_lock(&mutex);
-//                printf("!! input lock\n");
                 push_command(clients, clientName, requestCommand, application);
-//                printf("!! input lock2\n");
                 pthread_mutex_unlock(&mutex);
-//                printf("!! input unlock\n");
             } else {
                 printf("Invalid command \"%s\", \"%s\". Try again.\n", requestCommand, application);
             }
@@ -184,24 +172,27 @@ long send_request(int clientSocket, const char* requestCommand, const char* appl
 
     if (requestCommand != NULL) {
         if (application != NULL) {
-            printf("Sending: \"%s\", \"%s\"\n", requestCommand, application);
             sprintf(request, "%s %s", requestCommand, application);
         } else {
-            printf("Sending: \"%s\"\n", requestCommand);
             sprintf(request, "%s", requestCommand);
         }
     } else {
         return -1;
     }
     requestLength = send_message(clientSocket, request, strlen(request) + 1);
-//    printf("! send request %ld \"%s\"\n", requestLength, request);
     if (requestLength < 0) {
         return -1;
+    }
+    if (strcmp(requestCommand, "ok") != 0) {
+        if (application != NULL) {
+            printf("Sending: \"%s\", \"%s\"\n", requestCommand, application);
+        } else {
+            printf("Sending: \"%s\"\n", requestCommand);
+        }
     }
     return requestLength;
 }
 
-// todo synchronize send and recv for multiple clients ?
 void* handle_client(void* vargp) {
     char buffer[300];
     char clientName[30];
@@ -211,18 +202,16 @@ void* handle_client(void* vargp) {
 
     requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
     if (requestLength < 0) {
-        printf("Client name: \"%s\"\nrequestLength = %ld\n", clientName, requestLength);
         close_socket(clientSocket);
         pthread_exit(NULL);
     }
-    printf("Client name: \"%s\"\n! recv requestLength = %ld\n", clientName, requestLength);
 
     pthread_mutex_lock(&mutex);
     client = add_client(&clients, clientSocket, clientName);
-//    printf("! client %p, %d, \"%s\"\n", client, client->clientSocket, client->clientName);
     pthread_mutex_unlock(&mutex);
 
     send_request(client->clientSocket, "ok", "ok");
+    printf("Client \"%s\" connected.\n", clientName);
 
     int temp = 0;
     while (!quitSignal) {
@@ -235,13 +224,11 @@ void* handle_client(void* vargp) {
                 break;
             }
         } else {
-            printf("requestLength = %ld\n", requestLength);
+            printf("Unable to read request from client \"%s\".\n", clientName);
             return NULL;
         }
         pthread_mutex_lock(&mutex);
-//        printf("! client queue before \"%s\", h = %p, t = %p\n", client->clientName, client->commandsQueueHead, client->commandsQueueTail);
         if (client->commandsQueueHead != NULL) {
-//            printf("! before pop command %p, rc = \"%s\", a = \"%s\", n = %p\n", client->commandsQueueHead, client->commandsQueueHead->requestCommand, client->commandsQueueHead->application, client->commandsQueueHead->next);
             send_request(client->clientSocket,
                          client->commandsQueueHead->requestCommand,
                          client->commandsQueueHead->application);
@@ -249,15 +236,14 @@ void* handle_client(void* vargp) {
         } else {
             send_request(client->clientSocket, "ok", "ok");
         }
-//        printf("! client queue after \"%s\", h = %p, t = %p\n", client->clientName, client->commandsQueueHead, client->commandsQueueTail);
         pthread_mutex_unlock(&mutex);
 
     }
     pthread_mutex_lock(&mutex);
     delete_client(&client, client->clientSocket);
     pthread_mutex_unlock(&mutex);
-
     close_socket(clientSocket);
+    printf("Client \"%s\" disconnected.\n", clientName);
     return NULL;
 }
 
@@ -267,35 +253,33 @@ int main() {
 
     serverSocket = create_socket();
     if (serverSocket == -1) {
-        printf("Failed to create socket.\n");
+        puts("Failed to create socket.");
         return 1;
     }
     if (bind_socket(serverSocket, 8881) == -1) {
-        printf("Bind failed.\n");
+        puts("Bind failed.");
         return 2;
     }
     if (listen_port(serverSocket) == -1) {
-        printf("Listen failed.\n");
+        puts("Listen failed.");
         return 3;
     }
 
     pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
 
     for (int i = 0; i < MAX_CLIENTS; ++i) {
+        puts("Waiting for client to connect...");
         int clientSocket = accept_client(serverSocket);
         if (clientSocket == -1) {
-            printf("Accept failed.\n");
+            puts("Accept failed.");
             continue;
         }
         handle_client((void*)(&clientSocket));
 //        pthread_create(clientThreadsIds + i, NULL, handle_client, NULL); // todo handle client in new thread
     }
 
-//    printf("! cancel input\n");
     pthread_cancel(inputThreadId);
-//    printf("! join input\n");
     pthread_join(inputThreadId, NULL);
-//    printf("! join completed\n");
 
 //    for (int i = 0; i < MAX_CLIENTS; ++i) {
 //        pthread_join(clientThreadsIds[i], NULL);
@@ -304,7 +288,9 @@ int main() {
     close_host_socket(serverSocket);
 
     if (clients != NULL) {
+        puts("Disconnecting clients...");
         delete_all_clients(&clients);
     }
+    puts("Server shutdown.");
     return 0;
 }
