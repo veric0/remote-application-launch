@@ -66,6 +66,7 @@ void check_all_processes(const char* clientName, struct Node** pidsPtr, char* bu
     int length;
 
     if (current == NULL) {
+        sprintf(buffer, "Client \"%s\":  No running processes.", clientName);
         return;
     }
     length = sprintf(buffer, "Client \"%s\": ", clientName);
@@ -92,7 +93,7 @@ void check_all_processes(const char* clientName, struct Node** pidsPtr, char* bu
     }
 }
 
-// return pid, 1 for disconnecting, -1 for error
+// return pid created or killed, 1 for disconnecting, 0 for no commands received, -1 for error
 long handle_request(int serverSocket, struct Node** pidsPtr) {
     char buffer[250]; // todo make static or global
     char requestCommand[20];
@@ -100,50 +101,49 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
 
     long requestLength = recv_message(serverSocket, buffer, sizeof(buffer));
     printf("! handle requestLength = %zu\n", requestLength);
-    if (requestLength < 0) {
-        return -1;
+    if (requestLength <= 0) {
+        return requestLength;
     }
-    printf("! Receiving: \"%s\", \"%s\"\n", requestCommand, application);
     sscanf(buffer, "%s %[^\n]", requestCommand, application);
+    printf("! Receiving: \"%s\", \"%s\"\n", requestCommand, application);
 
     if (strcmp(requestCommand, "run") == 0) {
         int pid = launch_process(application);
         if (pid == -1) {
             printf("launch_process failed.\n");
             return -1;
-        } else {
-            add_process(pidsPtr, pid);
-            // todo response success to server
         }
+        add_process(pidsPtr, pid);
         return pid;
     } else if (strcmp(requestCommand, "kill") == 0) {
         if (strcmp (application, "all") == 0) { // disconnect client
             return 1;
-        } else {
-            long lpid = strtol(application, NULL, 10);
-            if (lpid <= 0 || lpid >= INT_MAX) {
-                return -1;
-            }
-            int pid = (int)lpid;
-            if (terminate_process(pid) == 0) {
-                delete_process(pidsPtr, pid);
-                return 0;
-            } else {
-                printf("terminate_process \"%d\" failed.\n", pid);
-                return -1;
-            }
         }
-    } else {
-        printf("Unknown request received: \"%s\"\n", requestCommand);
-        return -1;
+        long lpid = strtol(application, NULL, 10);
+        if (lpid <= 0 || lpid >= INT_MAX) {
+            return -1;
+        }
+        int pid = (int)lpid;
+        // todo check for pid in pids
+        if (terminate_process(pid) == -1) {
+            printf("terminate_process \"%d\" failed.\n", pid);
+            return -1;
+        }
+        delete_process(pidsPtr, pid);
+        return pid;
+    } else if (strcmp(requestCommand, "ok") == 0) {
+        printf("! ok\n");
+        return 0;
     }
+    printf("Unknown request received: \"%s\"\n", requestCommand);
+    return -1;
 }
 
 int main(int argc, char* argv[]) {
     char output[300];
     char clientName[30];
     size_t clientNameLength = 0;
-    long requestLength, quitSignal;
+    long requestLength, quitSignal = 0;
     int clientSocket;
     struct Node* pids = NULL;
 
@@ -170,16 +170,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    while (1) {
-        quitSignal = handle_request(clientSocket, &pids);
+    int temp = 0;
+    while (quitSignal >= 0) {
         if (quitSignal == 1) {
             sprintf(output, "Client \"%s\": disconnected.", clientName);
-            send_response(clientSocket, output);
-            break;
         } else {
             check_all_processes(clientName, &pids, output);
-            send_response(clientSocket, output);
         }
+        send_response(clientSocket, output);
+        quitSignal = handle_request(clientSocket, &pids);
+        printf("! sleep %d\n", ++temp);
         sleep_wrapper(1);
     }
     close_host_socket(clientSocket);
