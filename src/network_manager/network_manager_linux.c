@@ -28,7 +28,7 @@ int bind_socket(int serverSocket, uint16_t port) {
 }
 
 int listen_port(int serverSocket, int n) {
-    if (n < 1) {
+    if (n < 1 || n > SOMAXCONN) {
         return -1;
     }
     if (listen(serverSocket, n) == -1) {
@@ -48,6 +48,16 @@ int connect_to_server(int clientSocket, const char* ipAddr, uint16_t port) {
         return -1;
     }
     return 0;
+}
+
+int select_clients(int serverSocket) {
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(serverSocket, &readfds);
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    return select(serverSocket + 1, &readfds, NULL, NULL, &tv);
 }
 
 int accept_client(int serverSocket) {

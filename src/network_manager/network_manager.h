@@ -34,6 +34,12 @@ int listen_port(int serverSocket, int n);
 int connect_to_server(int clientSocket, const char* ipAddr, uint16_t port);
 
 /**
+ * Wait for ready connections to socket. Maximum time to wait is 1 second.
+ * @return number of ready connections, -1 on error, 0 on timeout
+ */
+int select_clients(int serverSocket);
+
+/**
  * Accept a connection on the socket
  * @return client socket on success, -1 on error
  */
