@@ -1,5 +1,5 @@
 #include <stdio.h>  // printf, puts, fgets, sscanf, sprintf
-#include <string.h> // strcmp, strlen, strcpy, strstr
+#include <string.h> // strcmp, strlen, strcpy
 #include <stdlib.h> // malloc, free, strtol
 #include <pthread.h>
 
@@ -96,9 +96,24 @@ struct client_node* pop_command(struct client_node* node) {
     return node;
 }
 
+void delete_commands(struct client_node* client) {
+    if (client == NULL) {
+        return;
+    }
+    struct command_node* temp = NULL;
+    while (client->commandsQueueHead != NULL) {
+        temp = client->commandsQueueHead;
+        client->commandsQueueHead = client->commandsQueueHead->next;
+        free(temp->requestCommand); // requestCommand and application together
+        free(temp);
+    }
+}
+
 void delete_client(struct client_node** headPtr, int clientSocket) {
     struct client_node* current = *headPtr;
     struct client_node* prev = NULL;
+
+    // find client node
     while (current != NULL && current->clientSocket != clientSocket) {
         prev = current;
         current = current->next;
@@ -106,11 +121,13 @@ void delete_client(struct client_node** headPtr, int clientSocket) {
     if (current == NULL) {
         return;
     }
+    // change links
     if (prev == NULL) {
         *headPtr = current->next;
     } else {
         prev->next = current->next;
     }
+    delete_commands(current);
     free(current->clientName);
     free(current);
 }
@@ -120,6 +137,7 @@ void delete_all_clients(struct client_node** headPtr) {
     struct client_node* next;
     while (current != NULL) {
         next = current->next;
+        delete_commands(current);
         free(current->clientName);
         free(current);
         current = next;
@@ -184,27 +202,18 @@ long send_request(int clientSocket, const char* requestCommand, const char* appl
     if (requestLength < 0) {
         return -1;
     }
-    if (strcmp(requestCommand, "ok") != 0) {
-        if (application != NULL) {
-            printf("Sending: \"%s\", \"%s\"\n", requestCommand, application);
-        } else {
-            printf("Sending: \"%s\"\n", requestCommand);
-        }
-    }
     return requestLength;
 }
 
-void* handle_client(void* vargp) {
+void handle_client(int clientSocket) {
     char buffer[300];
     char clientName[30];
     long requestLength = 0;
-    int clientSocket = *((int*)vargp);
     struct client_node* client;
 
     requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
     if (requestLength < 0) {
         close_socket(clientSocket);
-        pthread_exit(NULL);
     }
 
     pthread_mutex_lock(&mutex);
@@ -218,19 +227,19 @@ void* handle_client(void* vargp) {
         requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
         if (requestLength > 0) {
             puts(buffer);
-            char *ptr = strstr(buffer, "\": disconnected.");
-            if (ptr) {
-                break;
-            }
         } else {
             printf("Unable to read request from client \"%s\".\n", clientName);
-            pthread_exit(NULL);
         }
         pthread_mutex_lock(&mutex);
         if (client->commandsQueueHead != NULL) {
             send_request(client->clientSocket,
                          client->commandsQueueHead->requestCommand,
                          client->commandsQueueHead->application);
+            if (strcmp(client->commandsQueueHead->application, "all") == 0) {
+                pop_command(client);
+                pthread_mutex_unlock(&mutex);
+                break; // disconnect client
+            }
             pop_command(client);
         } else {
             send_request(client->clientSocket, "ok", "ok");
@@ -244,13 +253,11 @@ void* handle_client(void* vargp) {
 
     close_socket(clientSocket);
     printf("Client \"%s\" disconnected.\n", clientName);
-    pthread_exit(NULL);
 }
 
 int main() {
     pthread_t inputThreadId;
-    pthread_t clientThreadsIds[MAX_CLIENTS];
-    int clientSockets[MAX_CLIENTS];
+    int clientSocket;
 
     serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -268,22 +275,17 @@ int main() {
 
     pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
 
-    for (int i = 0; i < MAX_CLIENTS; ++i) {
-        puts("Waiting for client to connect...");
-        clientSockets[i] = accept_client(serverSocket);
-        if (clientSockets[i] == -1) {
-            puts("Accept failed.");
-            continue;
-        }
-        pthread_create(clientThreadsIds + i, NULL, handle_client, (void*)(clientSockets + i));
+
+    puts("Waiting for client to connect...");
+    clientSocket = accept_client(serverSocket);
+    if (clientSocket == -1) {
+        puts("Accept failed.");
+        return 4;
     }
+    handle_client(clientSocket);
 
     pthread_cancel(inputThreadId);
     pthread_join(inputThreadId, NULL);
-
-    for (int i = 0; i < MAX_CLIENTS; ++i) {
-        pthread_join(clientThreadsIds[i], NULL);
-    }
 
     close_host_socket(serverSocket);
 
