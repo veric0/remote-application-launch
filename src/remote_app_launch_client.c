@@ -22,6 +22,16 @@ struct Node* add_process(struct Node** headPtr, int pid) {
     return newNode;
 }
 
+struct Node* find_process(struct Node* head, int pid) {
+    while (head != NULL) {
+        if (head->pid == pid) {
+            return head;
+        }
+        head->next;
+    }
+    return NULL;
+}
+
 void delete_process(struct Node** headPtr, int pid) {
     struct Node* current = *headPtr;
     struct Node* prev = NULL;
@@ -39,6 +49,7 @@ void delete_process(struct Node** headPtr, int pid) {
     }
     free(current);
 }
+
 void delete_all_processes(struct Node** headPtr) {
     struct Node* current = *headPtr;
     struct Node* next;
@@ -101,7 +112,7 @@ void check_all_processes(const char* clientName, struct Node** pidsPtr, char* bu
 
 // return pid created or killed, 1 for disconnecting, 0 for no commands received, -1 for error
 long handle_request(int serverSocket, struct Node** pidsPtr) {
-    char buffer[250]; // todo make static or global
+    char buffer[250];
     char requestCommand[20];
     char application[230];
 
@@ -132,9 +143,12 @@ long handle_request(int serverSocket, struct Node** pidsPtr) {
         }
         int pid = (int)lpid;
         printf("Received new command: \"kill %d\".\n", pid);
-        // todo check for pid in pids
+        if (find_process(*pidsPtr, pid) == NULL) {
+            printf("Kill process failed: %d is not child process.\n", pid);
+            return -1;
+        }
         if (terminate_process(pid) == -1) {
-            printf("Kill process \"%d\" failed.\n", pid);
+            printf("Kill process %d failed.\n", pid);
             return -1;
         }
         delete_process(pidsPtr, pid);
@@ -171,20 +185,17 @@ int main(int argc, char* argv[]) {
         return 4;
     }
 
-    puts("Sending name to server...");
     clientNameLength = strlen(clientName);
     requestLength = send_message(clientSocket, clientName, clientNameLength + 1);
     if (requestLength == -1 || requestLength < clientNameLength) {
         printf("Client name not sent (%ld of %zu).\n", requestLength, clientNameLength);
         return 1;
     }
-    puts("Connected.");
+    puts("Connected to server.");
 
     while (quitSignal >= 0) {
-        printf("Loop %ld\n", ++loopIndex);
         if (quitSignal == 1) {
-            sprintf(output, "Client \"%s\": disconnected.", clientName);
-            puts("Disconnecting...");
+            break;
         } else {
             check_all_processes(clientName, &pids, output);
         }
