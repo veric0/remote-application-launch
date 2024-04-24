@@ -7,8 +7,8 @@
 
 // global variables used by all threads:
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-int quitSignal = 0, serverSocket = -1;
-const int MAX_CLIENTS = 1;
+int quitSignal = 0, serverSocket = -1, activeConnectionsCount = 0;
+const int MAX_CLIENTS = 42;
 struct client_node* clients = NULL;
 
 struct command_node {
@@ -205,15 +205,18 @@ long send_request(int clientSocket, const char* requestCommand, const char* appl
     return requestLength;
 }
 
-void handle_client(int clientSocket) {
+void* handle_client(void* vargp) {
     char buffer[300];
     char clientName[30];
     long requestLength = 0;
     struct client_node* client;
+    int clientSocket = *((int*)vargp);
 
     requestLength = recv_message(clientSocket, clientName, sizeof(clientName));
     if (requestLength < 0) {
         close_socket(clientSocket);
+        --activeConnectionsCount;
+        pthread_exit(NULL);
     }
 
     pthread_mutex_lock(&mutex);
@@ -255,11 +258,25 @@ void handle_client(int clientSocket) {
 
     close_socket(clientSocket);
     printf("Client \"%s\" disconnected.\n", clientName);
+    --activeConnectionsCount;
+    pthread_exit(NULL);
+}
+
+// stack
+struct thread_id_node {
+    pthread_t threadId;
+    struct thread_id_node* next;
+};
+
+struct thread_id_node* create_thread_id() {
+    return (struct thread_id_node*)malloc(sizeof(struct thread_id_node));
 }
 
 int main() {
-    pthread_t inputThreadId;
-    int clientSocket;
+    struct thread_id_node* inputThreadId = create_thread_id();
+    struct thread_id_node *threads, *node;
+    inputThreadId->next = NULL;
+    threads = inputThreadId;
 
     serverSocket = create_socket();
     if (serverSocket == -1) {
@@ -275,19 +292,31 @@ int main() {
         return 3;
     }
 
-    pthread_create(&inputThreadId, NULL, input_thread_func, NULL);
+    pthread_create(&(inputThreadId->threadId), NULL, input_thread_func, NULL);
 
-
-    puts("Waiting for client to connect...");
-    clientSocket = accept_client(serverSocket);
-    if (clientSocket == -1) {
-        puts("Accept failed.");
-        return 4;
+    while (!quitSignal) {
+        if (activeConnectionsCount < MAX_CLIENTS && select_clients(serverSocket) > 0) {
+            int clientSocket = accept_client(serverSocket);
+            if (clientSocket == -1) {
+                puts("Accept failed.");
+                continue;
+            }
+            node = create_thread_id();
+            node->next = threads;
+            threads = node;
+            ++activeConnectionsCount;
+            pthread_create(&(node->threadId), NULL, handle_client, (void *) (&clientSocket));
+        }
     }
-    handle_client(clientSocket);
 
-    pthread_cancel(inputThreadId);
-    pthread_join(inputThreadId, NULL);
+    pthread_cancel(inputThreadId->threadId);
+
+    while (threads != NULL) {
+        node = threads;
+        threads = threads->next;
+        pthread_join(node->threadId, NULL);
+        free(node);
+    }
 
     close_host_socket(serverSocket);
 
