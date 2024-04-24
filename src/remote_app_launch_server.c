@@ -226,7 +226,9 @@ void handle_client(int clientSocket) {
     while (!quitSignal) {
         requestLength = recv_message(clientSocket, buffer, sizeof(buffer));
         if (requestLength > 0) {
-            puts(buffer);
+            if (strcmp(buffer, "ok") != 0) {
+                puts(buffer);
+            }
         } else {
             printf("Unable to read request from client \"%s\".\n", clientName);
         }

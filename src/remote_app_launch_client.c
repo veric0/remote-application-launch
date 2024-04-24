@@ -27,7 +27,7 @@ struct Node* find_process(struct Node* head, int pid) {
         if (head->pid == pid) {
             return head;
         }
-        head->next;
+        head = head->next;
     }
     return NULL;
 }
@@ -77,7 +77,7 @@ void check_all_processes(const char* clientName, struct Node** pidsPtr, char* bu
     int length;
 
     if (current == NULL) {
-        sprintf(buffer, "Client \"%s\":  No running processes.", clientName);
+        sprintf(buffer, "ok"); //  No running processes
         return;
     }
     length = sprintf(buffer, "Client \"%s\": ", clientName);
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
     char output[300];
     char clientName[30];
     size_t clientNameLength = 0;
-    long requestLength, quitSignal = 0, loopIndex = 0;
+    long requestLength, quitSignal = 0;
     int clientSocket;
     struct Node* pids = NULL;
 
