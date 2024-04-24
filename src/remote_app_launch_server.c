@@ -130,9 +130,11 @@ void delete_client(struct client_node** headPtr, int clientSocket) {
     delete_commands(current);
     free(current->clientName);
     free(current);
+    printf("!! one %p\n", *headPtr);
 }
 
 void delete_all_clients(struct client_node** headPtr) {
+    printf("!! all %p\n", *headPtr);
     struct client_node* current = *headPtr;
     struct client_node* next;
     while (current != NULL) {
@@ -250,7 +252,7 @@ void handle_client(int clientSocket) {
 
     }
     pthread_mutex_lock(&mutex);
-    delete_client(&client, client->clientSocket);
+    delete_client(&clients, client->clientSocket);
     pthread_mutex_unlock(&mutex);
 
     close_socket(clientSocket);
