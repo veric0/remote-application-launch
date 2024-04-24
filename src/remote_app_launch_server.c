@@ -130,11 +130,9 @@ void delete_client(struct client_node** headPtr, int clientSocket) {
     delete_commands(current);
     free(current->clientName);
     free(current);
-    printf("!! one %p\n", *headPtr);
 }
 
 void delete_all_clients(struct client_node** headPtr) {
-    printf("!! all %p\n", *headPtr);
     struct client_node* current = *headPtr;
     struct client_node* next;
     while (current != NULL) {
