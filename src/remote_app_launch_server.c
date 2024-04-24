@@ -250,7 +250,7 @@ void handle_client(int clientSocket) {
 
     }
     pthread_mutex_lock(&mutex);
-    delete_client(&client, client->clientSocket);
+    delete_client(&clients, client->clientSocket);
     pthread_mutex_unlock(&mutex);
 
     close_socket(clientSocket);
